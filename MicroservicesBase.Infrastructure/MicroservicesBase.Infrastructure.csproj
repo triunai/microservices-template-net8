@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Library</OutputType>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Folder Include="Commands\" />
+		<Folder Include="Mapping\" />
+		<Folder Include="Observability\" />
+		<Folder Include="Persistence\Dac\" />
+		<Folder Include="Persistence\Models\" />
+		<Folder Include="Persistence\Sql\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Dapper" Version="2.1.66" />
+		<PackageReference Include="FluentResults" Version="4.0.0" />
+		<PackageReference Include="FluentValidation" Version="12.0.0" />
+		<PackageReference Include="MediatR" Version="13.0.0" />
+		<PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.1" />
+		<PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.9" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.9" />
+		<PackageReference Include="StackExchange.Redis" Version="2.9.25" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MicroservicesBase.Core\MicroservicesBase.Core.csproj" />
+	</ItemGroup>
+
+</Project>
