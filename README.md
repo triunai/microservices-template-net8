@@ -39,7 +39,7 @@ This is a **well-architected multi-tenant microservice template** specifically d
 
 ## 🏗️ Architecture Overview
 
-<img width="3422" height="3840" alt="Untitled diagram _ Mermaid Chart-2025-10-07-090252" src="https://github.com/user-attachments/assets/8132549d-8126-43ce-b9df-a5a3fe25b084" />
+<img width="3321" height="3840" alt="Untitled diagram _ Mermaid Chart-2025-10-07-093311" src="https://github.com/user-attachments/assets/2a833e51-6ab0-4dc0-8839-b376ccb08843" />
 
 
 ---
