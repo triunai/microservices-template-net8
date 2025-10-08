@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  # Redis cache for tenant connection string caching
+  redis:
+    image: redis:latest
+    container_name: redis-template
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - microservices-network
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  microservices-network:
+    driver: bridge
+

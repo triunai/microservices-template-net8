@@ -24,15 +24,18 @@ namespace MicroservicesBase.Infrastructure.Persistence
             await conn.OpenAsync(ct);
 
             using var multi = await conn.QueryMultipleAsync(
-                StoredProcedureNames.GetSaleWithItems, // sproc should return head row, then item rows
+                StoredProcedureNames.GetSaleWithItems, // mutli result set return, one "head" + one "items"
                 new { SaleId = saleId },
                 commandType: CommandType.StoredProcedure);
 
             var head = await multi.ReadFirstOrDefaultAsync<_Head>();
             if (head is null) return null;
 
+            // todo: add validation for null head to exit and show error
+
             var items = (await multi.ReadAsync<_Item>()).Select(i => new SaleReadItem(i.Sku, i.Qty, i.UnitPrice)).ToList();
 
+            // todo: add validation if GOT header but no items
             return new SaleReadModel(
                 head.Id,
                 head.TenantId,
@@ -47,6 +50,7 @@ namespace MicroservicesBase.Infrastructure.Persistence
         }
 
         // dapper row models (local to persistence)
+        // maybe sit this at domain(where its supposed to be)
         private sealed record _Head(
             Guid Id, string TenantId, string StoreId, string RegisterId, string ReceiptNumber,
             DateTimeOffset CreatedAt, decimal NetTotal, decimal TaxTotal, decimal GrandTotal);

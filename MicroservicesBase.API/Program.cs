@@ -53,6 +53,17 @@ try
     // Add global exception handler (.NET 8 approach)
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
+    // Add health checks
+    builder.Services.AddHealthChecks()
+        .AddSqlServer(
+            connectionString: builder.Configuration.GetConnectionString("TenantMaster")!,
+            name: "master_database",
+            tags: new[] { "db", "master", "ready" })
+        .AddRedis(
+            redisConnectionString: builder.Configuration.GetConnectionString("Redis")!,
+            name: "redis_cache",
+            tags: new[] { "cache", "redis", "ready" });
+
     // Add infra services
     builder.Services.AddFastEndpoints();
     builder.Services.AddInfrastructure(builder.Configuration);
@@ -82,6 +93,27 @@ try
     // 4. FastEndpoints mapping (includes built-in exception handling)
     app.UseFastEndpoints();
     app.UseSwaggerGen();
+
+    // 5. Health check endpoints
+    // Liveness: Basic check - is the process running?
+    app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+    {
+        Predicate = _ => false, // Don't run any registered health checks, just return healthy if process is alive
+        ResponseWriter = HealthChecks.UI.Client.UIResponseWriter.WriteHealthCheckUIResponse
+    });
+
+    // Readiness: Deep check - is the API ready to serve requests? (Master DB + Redis)
+    app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+    {
+        Predicate = check => check.Tags.Contains("ready"), // Only run checks tagged with "ready"
+        ResponseWriter = HealthChecks.UI.Client.UIResponseWriter.WriteHealthCheckUIResponse
+    });
+
+    // General health endpoint (runs all health checks)
+    app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+    {
+        ResponseWriter = HealthChecks.UI.Client.UIResponseWriter.WriteHealthCheckUIResponse
+    });
 
     Log.Information("Application startup complete");
     Log.Information("Listening on: {Urls}", string.Join(", ", builder.WebHost.GetSetting("urls")?.Split(';') ?? new[] { "default" }));
