@@ -64,6 +64,9 @@ try
             name: "redis_cache",
             tags: new[] { "cache", "redis", "ready" });
 
+    // Add HttpContextAccessor (required for audit logging)
+    builder.Services.AddHttpContextAccessor();
+
     // Add infra services
     builder.Services.AddFastEndpoints();
     builder.Services.AddInfrastructure(builder.Configuration);
