@@ -40,117 +40,45 @@
 
 ---
 
+## ✅ **COMPLETED - Session 2 (Operational Readiness)**
+
+### **Health Checks** 🏥
+21. ✅ **ASP.NET Core Health Checks** - Master DB + Redis connectivity monitoring
+22. ✅ **Health Endpoints** - `/health/live`, `/health/ready`, `/health` with structured JSON
+23. ✅ **Tenant-Specific Health** - `/health/tenant/{tenantName}` for individual DB checks
+24. ✅ **Swagger Documentation** - All health endpoints visible in Swagger UI
+
+### **Audit Logging** 📝
+25. ✅ **AuditLog Table** - Per-tenant audit storage with compression
+26. ✅ **Audit Pipeline Behavior** - MediatR automatic audit logging for all queries/commands
+27. ✅ **Asynchronous Processing** - Bounded channel with batching (200 entries/batch)
+28. ✅ **Payload Compression** - GZip compression for request/response data
+29. ✅ **Sampling Strategy** - 100% reads, 100% writes (configurable)
+30. ✅ **Graceful Degradation** - Fallback to Serilog if database unavailable
+
+### **Rate Limiting** 🚦
+31. ✅ **Per-Tenant Rate Limiting** - 100 requests/10s per tenant with sliding window
+32. ✅ **Queue Management** - 10-request queue with graceful backpressure
+33. ✅ **429 Responses** - Proper `Retry-After` and rate limit headers
+34. ✅ **Load Testing** - k6 tests proving 25% rejection rate under 2x overload
+35. ✅ **Multi-Tenant Fairness** - Tenant isolation working (no cross-tenant starvation)
+
+### **API Versioning** 📌
+36. ✅ **Path-Based Versioning** - `/api/v1/sales/{id}` endpoint pattern
+37. ✅ **Version Headers** - `X-Api-Versions` response header
+38. ✅ **Swagger Grouping** - API versions visible in Swagger documentation
+
+---
+
 ## 🎯 **PRIORITIZED ROADMAP** (Your Order)
 
 > **Philosophy:** Build operational readiness first, then resilience, then advanced features, and finally auth.
 
 ---
 
-## 📋 **SPRINT 1: Operational Readiness** (Next Session)
+## 📋 **SPRINT 1: Resilience & Reliability** (Next Session)
 
-### **1.1 Health Checks** 🏥 (30-45 min)
-**Priority:** CRITICAL - Kubernetes/Azure needs this for deployments
-
-**Tasks:**
-- [ ] Install `Microsoft.Extensions.Diagnostics.HealthChecks`
-- [ ] Install `AspNetCore.HealthChecks.SqlServer`
-- [ ] Install `AspNetCore.HealthChecks.Redis`
-- [ ] Create `/health/live` endpoint (basic liveness)
-- [ ] Create `/health/ready` endpoint (Master DB + Redis)
-- [ ] Optional: `/health/tenant/{tenantId}` (tenant DB check)
-- [ ] Test with k6 (health checks should be <50ms)
-
-**Success Criteria:**
-- `/health/live` returns 200 if API is running
-- `/health/ready` returns 200 if Master DB + Redis reachable
-- JSON response shows component-level health
-
----
-
-### **1.2 Performance Optimization** ⚡ (45-60 min)
-**Priority:** HIGH - Current SQL queries are 1-2 seconds (need <100ms for POS)
-
-**Problem:** Load test showed:
-- First requests: 1910-2371ms (cold SQL Server)
-- Later requests: 100-250ms (under load)
-- Final requests: 20-90ms (warmed up)
-
-**Solution A: Response-Level Caching** (Quick win - 15 min)
-- [ ] Cache Sale entities in Redis (not just connection strings)
-- [ ] Key: `Sale:{tenantId}:{saleId}`
-- [ ] TTL: 5 minutes (sales rarely change once created)
-- [ ] Expected result: 20-50ms after first hit
-
-**Solution B: Database Optimization** (30-45 min)
-- [ ] Add indexes on `Sales.Id`, `SaleItems.SaleId`
-- [ ] Test query performance with SQL Server (not LocalDB)
-- [ ] Verify connection pooling is configured
-- [ ] Consider read replicas (future)
-
-**Success Criteria:**
-- k6 load test: avg response time <100ms
-- P95 response time <200ms
-- No dropped iterations
-
----
-
-### **1.3 Audit Logging** 📝 (1-1.5 hours)
-**Priority:** MEDIUM-HIGH - Need to track who/what/when for POS compliance
-
-**Tasks:**
-- [ ] Create `AuditLog` table in Master DB
-  ```sql
-  CREATE TABLE AuditLog (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    TenantId NVARCHAR(100),
-    UserId NVARCHAR(100),
-    Action NVARCHAR(50),
-    Entity NVARCHAR(100),
-    EntityId NVARCHAR(100),
-    OldValue NVARCHAR(MAX),
-    NewValue NVARCHAR(MAX),
-    Timestamp DATETIMEOFFSET,
-    CorrelationId NVARCHAR(100),
-    IpAddress NVARCHAR(50)
-  )
-  ```
-- [ ] Create `IAuditLogger` abstraction
-- [ ] Implement `AuditLogger` (writes to Master DB)
-- [ ] Create MediatR pipeline behavior for audit logging
-- [ ] Log all commands (writes) automatically
-- [ ] Test audit trail for CreateSale (once implemented)
-
-**Success Criteria:**
-- All write operations create audit log entries
-- Audit log includes: who, what, when, old/new values, correlation ID
-- Can query audit trail by tenantId, userId, or correlationId
-
----
-
-## 📋 **SPRINT 2: Resilience & Reliability**
-
-### **2.1 Rate Limiting** 🚦 (1-1.5 hours)
-**Priority:** HIGH - Prevent abuse and ensure per-tenant fairness
-
-**Tasks:**
-- [ ] Install `Microsoft.AspNetCore.RateLimiting` (.NET 7+)
-- [ ] Implement composite key: `{tenantId}:{userId/clientId}`
-- [ ] Configure token bucket algorithm
-  - Burst: 100 requests / 10 seconds
-  - Sustained: 3000 requests / minute
-- [ ] Return 429 with `Retry-After` header
-- [ ] Add rate limit info to response headers (`X-RateLimit-*`)
-- [ ] Test per-tenant fairness (one tenant can't starve others)
-- [ ] Optional: Store limits in Redis for dynamic updates
-
-**Success Criteria:**
-- 429 returned when limits exceeded
-- Retry-After header accurate
-- Per-tenant isolation working
-
----
-
-### **2.2 Circuit Breakers & Retries** 🔄 (1-2 hours)
+### **1.1 Circuit Breakers & Retries** 🔄 (1-2 hours)
 **Priority:** MEDIUM-HIGH - Handle transient failures gracefully
 
 **Tasks:**
@@ -175,28 +103,9 @@
 
 ---
 
-## 📋 **SPRINT 3: Advanced Operations**
+## 📋 **SPRINT 2: Advanced Operations**
 
-### **3.1 API Versioning** 📌 (30-45 min)
-**Priority:** MEDIUM - Allows backward-compatible changes
-
-**Tasks:**
-- [ ] Install `Asp.Versioning.Http`
-- [ ] Configure path-based versioning (`/api/v1/...`)
-- [ ] Migrate existing routes to v1
-  - `/api/sales/{id}` → `/api/v1/sales/{id}`
-- [ ] Update Swagger for versioning (v1, v2 groups)
-- [ ] Add deprecation header support
-- [ ] Document versioning policy
-
-**Success Criteria:**
-- `/api/v1/sales/{id}` works
-- Swagger shows separate v1 section
-- Can add v2 without breaking v1
-
----
-
-### **3.2 Feature Flags** 🚩 (1.5-2 hours)
+### **2.1 Feature Flags** 🚩 (1.5-2 hours)
 **Priority:** MEDIUM - Toggle features per tenant without redeploy
 
 **Tasks:**
@@ -228,9 +137,9 @@
 
 ---
 
-## 📋 **SPRINT 4: Data Management**
+## 📋 **SPRINT 3: Data Management**
 
-### **4.1 Idempotency** 🔁 (1.5-2 hours)
+### **3.1 Idempotency** 🔁 (1.5-2 hours)
 **Priority:** MEDIUM-HIGH - Prevent duplicate charges in POS
 
 **Prerequisites:** Write operations must be implemented first!
@@ -261,7 +170,7 @@
 
 ---
 
-### **4.2 Multi-Tenant Migrations** 🔄 (2-3 hours)
+### **3.2 Multi-Tenant Migrations** 🔄 (2-3 hours)
 **Priority:** MEDIUM - Orchestrate schema updates across tenants
 
 **Tasks:**
@@ -289,7 +198,9 @@
 
 ---
 
-### **4.3 Write Operations** ✍️ (2-3 hours)
+## 📋 **SPRINT 4: Write Operations & Performance** (Before Auth)
+
+### **4.1 Write Operations** ✍️ (2-3 hours)
 **Priority:** MEDIUM - POS needs to create/void/refund sales
 
 **Tasks:**
@@ -315,6 +226,33 @@
 - Can void existing sales
 - Can refund sales
 - All operations audited
+
+---
+
+### **4.2 Performance Optimization** ⚡ (45-60 min)
+**Priority:** HIGH - Current SQL queries are 1-2 seconds (need <100ms for POS)
+
+**Problem:** Load test showed:
+- First requests: 1910-2371ms (cold SQL Server)
+- Later requests: 100-250ms (under load)
+- Final requests: 20-90ms (warmed up)
+
+**Solution A: Response-Level Caching** (Quick win - 15 min)
+- [ ] Cache Sale entities in Redis (not just connection strings)
+- [ ] Key: `Sale:{tenantId}:{saleId}`
+- [ ] TTL: 5 minutes (sales rarely change once created)
+- [ ] Expected result: 20-50ms after first hit
+
+**Solution B: Database Optimization** (30-45 min)
+- [ ] Add indexes on `Sales.Id`, `SaleItems.SaleId`
+- [ ] Test query performance with SQL Server (not LocalDB)
+- [ ] Verify connection pooling is configured
+- [ ] Consider read replicas (future)
+
+**Success Criteria:**
+- k6 load test: avg response time <100ms
+- P95 response time <200ms
+- No dropped iterations
 
 ---
 
@@ -392,20 +330,21 @@
 
 | Sprint | Component | Status | Est. Time | Priority |
 |--------|-----------|--------|-----------|----------|
-| **1** | Health Checks | ⏭️ NEXT | 30-45 min | CRITICAL |
-| **1** | Performance Optimization | ⏭️ NEXT | 45-60 min | HIGH |
-| **1** | Audit Logging | ⏭️ NEXT | 1-1.5 hrs | MED-HIGH |
-| **2** | Rate Limiting | ⏸️ TODO | 1-1.5 hrs | HIGH |
-| **2** | Circuit Breakers & Retries | ⏸️ TODO | 1-2 hrs | MED-HIGH |
-| **3** | API Versioning | ⏸️ TODO | 30-45 min | MEDIUM |
-| **3** | Feature Flags | ⏸️ TODO | 1.5-2 hrs | MEDIUM |
-| **4** | Idempotency | ⏸️ TODO | 1.5-2 hrs | MED-HIGH |
-| **4** | Multi-Tenant Migrations | ⏸️ TODO | 2-3 hrs | MEDIUM |
+| ~~**Session 1**~~ | ~~Health Checks~~ | ✅ **DONE** | 30-45 min | CRITICAL |
+| ~~**Session 2**~~ | ~~Audit Logging~~ | ✅ **DONE** | 1-1.5 hrs | MED-HIGH |
+| ~~**Session 2**~~ | ~~Rate Limiting~~ | ✅ **DONE** | 1-1.5 hrs | HIGH |
+| ~~**Session 2**~~ | ~~API Versioning~~ | ✅ **DONE** | 30-45 min | MEDIUM |
+| **1** | Circuit Breakers & Retries | ⏭️ NEXT | 1-2 hrs | MED-HIGH |
+| **2** | Feature Flags | ⏸️ TODO | 1.5-2 hrs | MEDIUM |
+| **3** | Idempotency | ⏸️ TODO | 1.5-2 hrs | MED-HIGH |
+| **3** | Multi-Tenant Migrations | ⏸️ TODO | 2-3 hrs | MEDIUM |
 | **4** | Write Operations | ⏸️ TODO | 2-3 hrs | MEDIUM |
+| **4** | Performance Optimization | ⏸️ TODO | 45-60 min | HIGH |
 | **5** | Authentication & Authorization | ⏸️ TODO | 2-3 hrs | MUST-HAVE |
 | **5** | Security Baseline | ⏸️ TODO | 1-1.5 hrs | HIGH |
 
-**Total Estimated Time:** 15-20 hours across 5 sprints
+**Completed:** 4 items (~3.5 hours)  
+**Remaining:** 12-16 hours across 5 sprints
 
 ---
 
@@ -435,13 +374,21 @@
 
 ## 📝 **Next Session Action Items**
 
-**READY TO START:**
-1. ✅ Implement Health Checks (`/health/live`, `/health/ready`)
-2. ✅ Optimize SQL query performance (response caching + indexes)
-3. ✅ Implement Audit Logging (table + service + MediatR behavior)
+**COMPLETED IN SESSION 2:**
+1. ✅ Health Checks - `/health/live`, `/health/ready`, `/health`, `/health/tenant/{name}`
+2. ✅ Audit Logging - Per-tenant storage with async batching and compression
+3. ✅ Rate Limiting - Per-tenant sliding window (100 req/10s) with queue
+4. ✅ API Versioning - Path-based versioning with v1 endpoints
+5. ✅ Load Testing - k6 tests proving rate limiting works under 2x overload
+
+**READY TO START (SPRINT 1):**
+1. ⏭️ Circuit Breakers & Retries (Polly for Redis/DB resilience)
+
+**DEFERRED (SPRINT 4):**
+- Write operations (needed for full idempotency testing)
+- Performance optimization (response caching + database indexes)
 
 **BLOCKED/WAITING:**
-- Write operations (needed for idempotency testing)
 - Authentication (waiting until all other features complete)
 
 
