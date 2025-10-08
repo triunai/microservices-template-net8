@@ -6,6 +6,7 @@ using FastEndpoints.Swagger;
 using Serilog;
 using MicroservicesBase.Core.Abstractions.Tenancy;
 using MicroservicesBase.Infrastructure.Tenancy;
+using Microsoft.AspNetCore.RateLimiting;
 
 // Configure Serilog early (before building the app)
 Log.Logger = new LoggerConfiguration()
@@ -67,10 +68,91 @@ try
     // Add HttpContextAccessor (required for audit logging)
     builder.Services.AddHttpContextAccessor();
 
+    // Add API versioning
+    builder.Services.AddApiVersioning(options =>
+    {
+        options.DefaultApiVersion = new Asp.Versioning.ApiVersion(1, 0);
+        options.AssumeDefaultVersionWhenUnspecified = true;
+        options.ReportApiVersions = true; // Add X-Api-Versions header to responses
+        options.ApiVersionReader = Asp.Versioning.ApiVersionReader.Combine(
+            new Asp.Versioning.UrlSegmentApiVersionReader(),
+            new Asp.Versioning.HeaderApiVersionReader("X-Api-Version")
+        );
+    }).AddApiExplorer(options =>
+    {
+        options.GroupNameFormat = "'v'VVV"; // Format: v1, v2, etc.
+        options.SubstituteApiVersionInUrl = true;
+    });
+
+    // Add rate limiting
+    builder.Services.AddRateLimiter(options =>
+    {
+        // Per-tenant rate limiting using sliding window
+        options.AddSlidingWindowLimiter("per-tenant", config =>
+        {
+            config.PermitLimit = 100; // 100 requests
+            config.Window = TimeSpan.FromSeconds(10); // per 10 seconds
+            config.SegmentsPerWindow = 2; // Sliding window with 2 segments (5s each)
+            config.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
+            config.QueueLimit = 10; // Queue up to 10 requests when limit exceeded
+        });
+
+        // Global rate limiter (fallback for requests without tenant)
+        options.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<Microsoft.AspNetCore.Http.HttpContext, string>(httpContext =>
+        {
+            var tenantId = httpContext.Items["TenantId"]?.ToString() ?? "Unknown";
+            
+            // Per-tenant partition
+            return System.Threading.RateLimiting.RateLimitPartition.GetSlidingWindowLimiter(
+                partitionKey: tenantId,
+                factory: _ => new System.Threading.RateLimiting.SlidingWindowRateLimiterOptions
+                {
+                    PermitLimit = 100,
+                    Window = TimeSpan.FromSeconds(10),
+                    SegmentsPerWindow = 2,
+                    QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 10
+                });
+        });
+
+        // Customize 429 response
+        options.RejectionStatusCode = 429;
+        options.OnRejected = async (context, cancellationToken) =>
+        {
+            context.HttpContext.Response.StatusCode = 429;
+            context.HttpContext.Response.Headers["Retry-After"] = "10";
+            context.HttpContext.Response.Headers["X-RateLimit-Limit"] = "100";
+            context.HttpContext.Response.Headers["X-RateLimit-Window"] = "10s";
+            
+            await context.HttpContext.Response.WriteAsJsonAsync(new
+            {
+                type = "https://httpstatuses.com/429",
+                title = "Too Many Requests",
+                status = 429,
+                detail = "Rate limit exceeded. Please retry after 10 seconds.",
+                tenantId = context.HttpContext.Items["TenantId"]?.ToString() ?? "Unknown",
+                correlationId = context.HttpContext.Items["CorrelationId"]?.ToString(),
+                timestamp = DateTimeOffset.UtcNow
+            }, cancellationToken);
+        };
+    });
+
     // Add infra services
     builder.Services.AddFastEndpoints();
     builder.Services.AddInfrastructure(builder.Configuration);
-    builder.Services.SwaggerDocument(); // Simple FastEndpoints Swagger - no custom config
+    
+    // Configure Swagger with versioning
+    builder.Services.SwaggerDocument(o =>
+    {
+        o.DocumentSettings = s =>
+        {
+            s.DocumentName = "v1";
+            s.Title = "Microservices Base API";
+            s.Version = "v1.0";
+            s.Description = "Multi-tenant POS Microservice Template - Version 1";
+        };
+        o.ShortSchemaNames = true;
+    });
 
     var app = builder.Build();
 
@@ -82,7 +164,13 @@ try
     // 2. Tenant resolution middleware (extracts tenant and enriches logs)
     app.UseMiddleware<TenantResolutionMiddleware>();
     
-    // 3. Serilog request logging (logs HTTP requests with correlation ID)
+    // 3. Rate limiting (after tenant resolution, so it can partition by tenant)
+    app.UseRateLimiter();
+    
+    // 4. Rate limit info headers (add rate limit info to all responses)
+    app.UseMiddleware<RateLimitHeadersMiddleware>();
+    
+    // 5. Serilog request logging (logs HTTP requests with correlation ID)
     app.UseSerilogRequestLogging(options =>
     {
         options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
@@ -93,11 +181,11 @@ try
         };
     });
     
-    // 4. FastEndpoints mapping (includes built-in exception handling)
+    // 6. FastEndpoints mapping (includes built-in exception handling)
     app.UseFastEndpoints();
     app.UseSwaggerGen();
 
-    // 5. Health check endpoints
+    // 7. Health check endpoints
     // Liveness: Basic check - is the process running?
     app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
