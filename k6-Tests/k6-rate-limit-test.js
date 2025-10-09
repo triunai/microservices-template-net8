@@ -20,10 +20,10 @@ export const options = {
       exec: 'singleTenantBurst',
     },
     
-    // Scenario 2: Multi-tenant fairness test (separate tenants shouldn't affect each other)
+    // Scenario 2: Multi-tenant fairness test (verify per-tenant isolation)
     multi_tenant_fairness: {
       executor: 'constant-arrival-rate',
-      rate: 15,              // 15 requests per second per tenant
+      rate: 15,              // 15 requests per second (split between tenants)
       timeUnit: '1s',
       duration: '15s',
       preAllocatedVUs: 5,
@@ -83,9 +83,9 @@ export function singleTenantBurst() {
   }
 }
 
-// Scenario 2: Multi-tenant fairness (different tenants shouldn't affect each other)
+// Scenario 2: Multi-tenant fairness (verify tenant isolation)
 export function multiTenantFairness() {
-  // Rotate between different tenants
+  // Rotate between tenants to verify per-tenant rate limiting works
   const tenants = ['7ELEVEN', 'BURGERKING'];
   const tenant = tenants[Math.floor(Math.random() * tenants.length)];
   
@@ -121,24 +121,83 @@ export function multiTenantFairness() {
   }
 }
 
-// Summary at the end
+// Custom summary - clean, readable output
 export function handleSummary(data) {
-  const rateLimitHits = data.metrics.rate_limit_hits?.values?.rate || 0;
+  // Extract key metrics
   const totalRequests = data.metrics.http_reqs?.values?.count || 0;
-  const successRate = (data.metrics['http_reqs{status:200}']?.values?.rate || 0);
-  const rateLimitRate = (data.metrics['http_reqs{status:429}']?.values?.rate || 0);
+  const successCount = data.metrics['http_reqs{status:200}']?.values?.count || 0;
+  const rateLimitCount = data.metrics['http_reqs{status:429}']?.values?.count || 0;
+  const droppedCount = data.metrics.dropped_iterations?.values?.count || 0;
+  const checksPass = data.root_group.checks.reduce((sum, c) => sum + c.passes, 0);
+  const checksFail = data.root_group.checks.reduce((sum, c) => sum + c.fails, 0);
   
-  console.log('\n========================================');
-  console.log('📊 RATE LIMITING TEST SUMMARY');
-  console.log('========================================');
-  console.log(`Total Requests: ${totalRequests}`);
-  console.log(`Success Rate: ${(successRate * 100).toFixed(1)}%`);
-  console.log(`Rate Limited: ${(rateLimitRate * 100).toFixed(1)}%`);
-  console.log(`Rate Limit Hit Rate: ${(rateLimitHits * 100).toFixed(1)}%`);
-  console.log('========================================\n');
+  // Latency metrics
+  const duration = data.metrics.http_req_duration?.values || {};
+  const durationSuccess = data.metrics['http_req_duration{expected_response:true}']?.values || {};
   
+  // Calculate percentages
+  const successPercent = totalRequests > 0 ? (successCount / totalRequests * 100).toFixed(1) : 0;
+  const rateLimitPercent = totalRequests > 0 ? (rateLimitCount / totalRequests * 100).toFixed(1) : 0;
+  
+  // Test duration
+  const testDuration = (data.state.testRunDurationMs / 1000).toFixed(1);
+  
+  // Build clean text summary
+  const summary = `
+╔════════════════════════════════════════════════════════════════╗
+║                  📊 RATE LIMITING TEST RESULTS                 ║
+╚════════════════════════════════════════════════════════════════╝
+
+⏱️  TEST DURATION: ${testDuration}s
+
+📈 REQUEST SUMMARY
+┌────────────────────────────────────────────────────────────────┐
+│ Total Requests:        ${totalRequests.toString().padStart(6)}                                   │
+│ ✅ Success (200):       ${successCount.toString().padStart(6)}  (${successPercent}%)                      │
+│ 🚦 Rate Limited (429):  ${rateLimitCount.toString().padStart(6)}  (${rateLimitPercent}%)                       │
+│ ⚠️  Dropped (k6):        ${droppedCount.toString().padStart(6)}                                   │
+└────────────────────────────────────────────────────────────────┘
+
+⚡ LATENCY (All Requests)
+┌────────────────────────────────────────────────────────────────┐
+│ Average:       ${duration.avg?.toFixed(2).padStart(8)}ms                                 │
+│ Median (p50):  ${duration.med?.toFixed(2).padStart(8)}ms                                 │
+│ p(90):         ${duration['p(90)']?.toFixed(2).padStart(8)}ms                                 │
+│ p(95):         ${duration['p(95)']?.toFixed(2).padStart(8)}ms ${duration['p(95)'] > 500 ? '⚠️  (>500ms)' : '✅'}                 │
+│ Max:           ${duration.max?.toFixed(2).padStart(8)}ms                                 │
+└────────────────────────────────────────────────────────────────┘
+
+⚡ LATENCY (Success Only - 200 responses)
+┌────────────────────────────────────────────────────────────────┐
+│ Average:       ${durationSuccess.avg?.toFixed(2).padStart(8)}ms                                 │
+│ Median (p50):  ${durationSuccess.med?.toFixed(2).padStart(8)}ms                                 │
+│ p(90):         ${durationSuccess['p(90)']?.toFixed(2).padStart(8)}ms                                 │
+│ p(95):         ${durationSuccess['p(95)']?.toFixed(2).padStart(8)}ms                                 │
+└────────────────────────────────────────────────────────────────┘
+
+✅ CHECKS
+┌────────────────────────────────────────────────────────────────┐
+│ Passed:        ${checksPass.toString().padStart(6)} / ${(checksPass + checksFail).toString().padEnd(6)} ${checksFail === 0 ? '✅ All passed!' : '❌'}        │
+└────────────────────────────────────────────────────────────────┘
+
+🎯 VERDICT
+┌────────────────────────────────────────────────────────────────┐
+│ ${rateLimitCount > 0 ? '✅ Rate limiting is working!' : '⚠️  No rate limits hit (increase load)'}                          │
+│ ${checksFail === 0 ? '✅ All checks passed!' : '❌ Some checks failed'}                                       │
+│ ${successPercent >= 50 ? '✅ Good success rate under load' : '⚠️  Low success rate'}                            │
+│ ${duration['p(95)'] < 500 ? '✅ Latency within target (<500ms)' : '⚠️  Latency above target (queue/backpressure)'}            │
+└────────────────────────────────────────────────────────────────┘
+
+📝 TIP: High p(95) latency under 2x load is expected - rate limiter
+       is queuing requests before rejecting them (graceful degradation).
+
+`;
+
+  // Return ONLY the text summary to stdout
+  // Save full JSON to file for detailed analysis if needed
   return {
-    'stdout': JSON.stringify(data, null, 2),
+    'stdout': summary,
+    'summary.json': JSON.stringify(data, null, 2), // Save full data to file
   };
 }
 
