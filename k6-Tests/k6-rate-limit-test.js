@@ -36,11 +36,14 @@ export const options = {
   
   thresholds: {
     // Success thresholds
-    'http_req_duration': ['p(95)<500'],           // 95% of requests should be <500ms
-    'http_reqs{status:200}': ['rate>0.3'],       // At least 30% should succeed (some will be rate limited)
-    'http_reqs{status:429}': ['rate>0'],         // Should see some rate limit responses
-    'rate_limit_hits': ['rate>0.1'],             // Should hit rate limits
+    'http_req_duration': ['p(95)<500', 'p(99)<2000'],  // 95% <500ms, 99% <2s
+    'http_reqs{status:200}': ['rate>0.3'],             // At least 30% should succeed (some will be rate limited)
+    'http_reqs{status:429}': ['rate>0'],               // Should see some rate limit responses
+    'rate_limit_hits': ['rate>0.1'],                   // Should hit rate limits
   },
+  
+  // Include p99 in summary statistics
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
 
 // Test data
@@ -142,7 +145,7 @@ export function handleSummary(data) {
   // Test duration
   const testDuration = (data.state.testRunDurationMs / 1000).toFixed(1);
   
-  // Build clean text summary
+  // Build clean text summary with proper alignment
   const summary = `
 ╔════════════════════════════════════════════════════════════════╗
 ║                  📊 RATE LIMITING TEST RESULTS                 ║
@@ -152,52 +155,53 @@ export function handleSummary(data) {
 
 📈 REQUEST SUMMARY
 ┌────────────────────────────────────────────────────────────────┐
-│ Total Requests:        ${totalRequests.toString().padStart(6)}                                   │
-│ ✅ Success (200):       ${successCount.toString().padStart(6)}  (${successPercent}%)                      │
-│ 🚦 Rate Limited (429):  ${rateLimitCount.toString().padStart(6)}  (${rateLimitPercent}%)                       │
-│ ⚠️  Dropped (k6):        ${droppedCount.toString().padStart(6)}                                   │
+│ Total Requests:        ${totalRequests.toString().padStart(6)}                            │
+│ ✅ Success (200):       ${successCount.toString().padStart(6)}  (${successPercent.padEnd(5)}%)                   │
+│ 🚦 Rate Limited (429):  ${rateLimitCount.toString().padStart(6)}  (${rateLimitPercent.padEnd(5)}%)                    │
+│ ⚠️  Dropped (k6):        ${droppedCount.toString().padStart(6)}                            │
 └────────────────────────────────────────────────────────────────┘
 
 ⚡ LATENCY (All Requests)
 ┌────────────────────────────────────────────────────────────────┐
-│ Average:       ${duration.avg?.toFixed(2).padStart(8)}ms                                 │
-│ Median (p50):  ${duration.med?.toFixed(2).padStart(8)}ms                                 │
-│ p(90):         ${duration['p(90)']?.toFixed(2).padStart(8)}ms                                 │
-│ p(95):         ${duration['p(95)']?.toFixed(2).padStart(8)}ms ${duration['p(95)'] > 500 ? '⚠️  (>500ms)' : '✅'}                 │
-│ Max:           ${duration.max?.toFixed(2).padStart(8)}ms                                 │
+│ Average:       ${duration.avg?.toFixed(2).padStart(8)}ms                          │
+│ Median (p50):  ${duration.med?.toFixed(2).padStart(8)}ms                          │
+│ p(90):         ${duration['p(90)']?.toFixed(2).padStart(8)}ms                          │
+│ p(95):         ${duration['p(95)']?.toFixed(2).padStart(8)}ms ${duration['p(95)'] > 500 ? '⚠️  (>500ms)      ' : '✅              '}│
+│ p(99):         ${duration['p(99)']?.toFixed(2).padStart(8)}ms ${duration['p(99)'] > 2000 ? '⚠️  (>2s)        ' : '✅              '}│
+│ Max:           ${duration.max?.toFixed(2).padStart(8)}ms                          │
 └────────────────────────────────────────────────────────────────┘
 
 ⚡ LATENCY (Success Only - 200 responses)
 ┌────────────────────────────────────────────────────────────────┐
-│ Average:       ${durationSuccess.avg?.toFixed(2).padStart(8)}ms                                 │
-│ Median (p50):  ${durationSuccess.med?.toFixed(2).padStart(8)}ms                                 │
-│ p(90):         ${durationSuccess['p(90)']?.toFixed(2).padStart(8)}ms                                 │
-│ p(95):         ${durationSuccess['p(95)']?.toFixed(2).padStart(8)}ms                                 │
+│ Average:       ${durationSuccess.avg?.toFixed(2).padStart(8)}ms                          │
+│ Median (p50):  ${durationSuccess.med?.toFixed(2).padStart(8)}ms                          │
+│ p(90):         ${durationSuccess['p(90)']?.toFixed(2).padStart(8)}ms                          │
+│ p(95):         ${durationSuccess['p(95)']?.toFixed(2).padStart(8)}ms                          │
+│ p(99):         ${durationSuccess['p(99)']?.toFixed(2).padStart(8)}ms (TAIL)                   │
 └────────────────────────────────────────────────────────────────┘
 
 ✅ CHECKS
 ┌────────────────────────────────────────────────────────────────┐
-│ Passed:        ${checksPass.toString().padStart(6)} / ${(checksPass + checksFail).toString().padEnd(6)} ${checksFail === 0 ? '✅ All passed!' : '❌'}        │
+│ Passed:        ${checksPass.toString().padStart(6)} / ${(checksPass + checksFail).toString().padEnd(6)} ${checksFail === 0 ? '✅ All passed!' : '❌           '}   │
 └────────────────────────────────────────────────────────────────┘
 
 🎯 VERDICT
 ┌────────────────────────────────────────────────────────────────┐
-│ ${rateLimitCount > 0 ? '✅ Rate limiting is working!' : '⚠️  No rate limits hit (increase load)'}                          │
-│ ${checksFail === 0 ? '✅ All checks passed!' : '❌ Some checks failed'}                                       │
-│ ${successPercent >= 50 ? '✅ Good success rate under load' : '⚠️  Low success rate'}                            │
-│ ${duration['p(95)'] < 500 ? '✅ Latency within target (<500ms)' : '⚠️  Latency above target (queue/backpressure)'}            │
+│ ${(rateLimitCount > 0 ? '✅ Rate limiting is working!' : '⚠️  No rate limits hit (increase load)').padEnd(62)}│
+│ ${(checksFail === 0 ? '✅ All checks passed!' : '❌ Some checks failed').padEnd(62)}│
+│ ${(successPercent >= 50 ? '✅ Good success rate under load' : '⚠️  Low success rate').padEnd(62)}│
+│ ${(duration['p(95)'] < 500 ? '✅ Latency within target (<500ms)' : '⚠️  Latency above target (queue/backpressure)').padEnd(62)}│
 └────────────────────────────────────────────────────────────────┘
 
-📝 TIP: High p(95) latency under 2x load is expected - rate limiter
-       is queuing requests before rejecting them (graceful degradation).
+📝 TIP: p(95) = 95% of requests faster, p(99) = worst 1% (the TAIL).
+       High tail latency under 2x load is expected - rate limiter queuing
+       requests before rejecting them (graceful degradation).
 
 `;
 
-  // Return ONLY the text summary to stdout
-  // Save full JSON to file for detailed analysis if needed
+  // Return ONLY the clean text summary to stdout
   return {
     'stdout': summary,
-    'summary.json': JSON.stringify(data, null, 2), // Save full data to file
   };
 }
 

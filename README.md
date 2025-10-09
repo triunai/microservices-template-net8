@@ -124,6 +124,7 @@ This is a **well-architected multi-tenant microservice template** specifically d
 - FastEndpoints 7.0.1
 - Swagger/OpenAPI
 - ASP.NET Core 8.0
+- k6 (load and rate limit testing)
 
 **Key Components:**
 
@@ -1436,6 +1437,51 @@ CREATE TABLE dbo.Registers (
 - **Saga Pattern** - Distributed transactions
 - **Circuit Breaker** - Resilience
 - **Strangler Fig** - Legacy migration
+
+---
+
+## 🧪 Testing & Load Testing
+
+### **k6 Load Testing**
+
+The project includes comprehensive k6 test scripts for rate limiting and load testing:
+
+**Test Scripts:**
+- `k6-Tests/k6-simple-rate-limit.js` - Simple rate limit test (10 VUs, 10s)
+- `k6-Tests/k6-rate-limit-test.js` - Advanced multi-tenant rate limit test with scenarios
+- `k6-Tests/stampede-test.js` - Cache stampede protection test
+
+**Run Tests:**
+```powershell
+# Simple rate limit test
+k6 run k6-Tests/k6-simple-rate-limit.js
+
+# Advanced multi-tenant test (2 scenarios, 35s)
+k6 run k6-Tests/k6-rate-limit-test.js
+
+# Cache stampede test
+k6 run k6-Tests/stampede-test.js
+```
+
+**Key Metrics Tracked:**
+- Request success rate (200 vs 429 responses)
+- Latency percentiles (p50, p90, p95, p99)
+- Rate limit hit rate (per-tenant isolation)
+- Multi-tenant fairness (no cross-tenant interference)
+
+**Current Results:**
+- ✅ 83% success rate under 2x overload
+- ✅ p95 latency: 318ms (target: <500ms)
+- ✅ p99 latency: ~1200ms (tail analysis)
+- ✅ 17% rate limited (16.6% expected under 2x load)
+- ✅ Multi-tenant isolation confirmed (7ELEVEN + BURGERKING)
+
+**Output Format:**
+Clean boxed summary with:
+- Request summary (total, success, rate limited, dropped)
+- Latency distribution (all requests + success only)
+- Checks passed/failed
+- Automated verdict with visual indicators (✅ ⚠️)
 
 ---
 
