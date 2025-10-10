@@ -35,6 +35,7 @@ namespace MicroservicesBase.Core.Constants
             public const string IMG_BMP = "image/bmp";
             public const string APP_FORM_URL_ENCODED = "application/x-www-form-urlencoded";
             public const string APP_JSON = "application/json";
+            public const string APP_PROBLEM_JSON = "application/problem+json";
             public const string APP_XML = "application/xml";
             public const string APP_PDF = "application/pdf";
             public const string APP_PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
