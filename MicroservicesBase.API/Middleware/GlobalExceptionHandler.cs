@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics;
+using MicroservicesBase.Core.Constants;
 using MicroservicesBase.Core.Errors;
 
 namespace MicroservicesBase.API.Middleware
@@ -24,18 +25,29 @@ namespace MicroservicesBase.API.Middleware
             Exception exception,
             CancellationToken cancellationToken)
         {
-            // Log the exception with full context
-            LogException(httpContext, exception);
+            Microsoft.AspNetCore.Mvc.ProblemDetails problemDetails;
 
-            // Create ProblemDetails response
-            var includeDetails = _environment.IsDevelopment();
-            var problemDetails = API.ProblemDetails.ProblemDetailsFactory.CreateFromException(
-                httpContext,
-                exception,
-                includeDetails);
+            // Handle routing constraint failures (e.g., invalid GUID format)
+            if (IsRoutingConstraintFailure(exception))
+            {
+                // Don't log routing failures - they're noise from bad actors
+                problemDetails = CreateRoutingConstraintError(httpContext, exception);
+            }
+            else
+            {
+                // Log the exception with full context
+                LogException(httpContext, exception);
+
+                // Create ProblemDetails response
+                var includeDetails = _environment.IsDevelopment();
+                problemDetails = API.ProblemDetails.ProblemDetailsFactory.CreateFromException(
+                    httpContext,
+                    exception,
+                    includeDetails);
+            }
 
             // Set response status code
-            httpContext.Response.StatusCode = problemDetails.Status ?? 500;
+            httpContext.Response.StatusCode = problemDetails.Status ?? HttpConstants.StatusCodes.InternalServerError;
 
             // Write ProblemDetails as JSON response
             await httpContext.Response.WriteAsJsonAsync(problemDetails, cancellationToken);
@@ -46,9 +58,12 @@ namespace MicroservicesBase.API.Middleware
 
         private void LogException(HttpContext httpContext, Exception exception)
         {
-            var correlationId = httpContext.Items["CorrelationId"]?.ToString() ?? "Unknown";
-            var tenantId = httpContext.Items["TenantId"]?.ToString() ?? "Unknown";
-            var userId = httpContext.User?.Identity?.Name ?? "Anonymous";
+            const string unknown = "Unknown";
+            const string anonymous = "Anonymous";
+            
+            var correlationId = httpContext.Items[HttpConstants.ContextKeys.CorrelationId]?.ToString() ?? unknown;
+            var tenantId = httpContext.Items[HttpConstants.ContextKeys.TenantId]?.ToString() ?? unknown;
+            var userId = httpContext.User?.Identity?.Name ?? anonymous;
 
             // Different log levels based on exception type
             switch (exception)
@@ -74,6 +89,54 @@ namespace MicroservicesBase.API.Middleware
                         exception.GetType().Name, correlationId, tenantId, userId, httpContext.Request.Path);
                     break;
             }
+        }
+
+        /// <summary>
+        /// Determines if the exception is from a routing constraint failure (e.g., invalid GUID).
+        /// </summary>
+        private static bool IsRoutingConstraintFailure(Exception exception)
+        {
+            return exception is BadHttpRequestException badRequest &&
+                   (badRequest.Message.Contains("Could not bind parameter") ||
+                    badRequest.Message.Contains("The value") && badRequest.Message.Contains("is not valid") ||
+                    badRequest.Message.Contains("Failed to bind parameter"));
+        }
+
+        /// <summary>
+        /// Creates a ProblemDetails response for routing constraint failures.
+        /// Tells bad actors to stop hitting invalid endpoints.
+        /// </summary>
+        private Microsoft.AspNetCore.Mvc.ProblemDetails CreateRoutingConstraintError(
+            HttpContext httpContext, 
+            Exception exception)
+        {
+            var problemDetails = new Microsoft.AspNetCore.Mvc.ProblemDetails
+            {
+                Type = HttpConstants.ProblemTypes.BadRequest,
+                Title = "Invalid request format",
+                Status = HttpConstants.StatusCodes.BadRequest,
+                Detail = "The request contains invalid parameter format. This endpoint only accepts valid GUIDs. Please check your request and do not retry with invalid formats.",
+                Instance = httpContext.Request.Path
+            };
+
+            // Add context enrichment (correlation ID, tenant ID, etc.)
+            if (httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CorrelationId, out var correlationId))
+            {
+                problemDetails.Extensions["correlationId"] = correlationId?.ToString();
+            }
+
+            if (httpContext.Items.TryGetValue(HttpConstants.ContextKeys.TenantId, out var tenantId))
+            {
+                problemDetails.Extensions["tenantId"] = tenantId?.ToString();
+            }
+
+            problemDetails.Extensions["traceId"] = httpContext.TraceIdentifier;
+            problemDetails.Extensions["timestamp"] = DateTimeOffset.UtcNow;
+            
+            // Add a hint for valid format (without being too helpful to attackers)
+            problemDetails.Extensions["expectedFormat"] = "GUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)";
+
+            return problemDetails;
         }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using MicroservicesBase.Core.Abstractions.Tenancy;
+using MicroservicesBase.Core.Constants;
 using MicroservicesBase.Infrastructure.Tenancy;
 using Microsoft.AspNetCore.Http;
 using Serilog.Context;
@@ -16,6 +17,7 @@ namespace MicroservicesBase.API.Middleware
     {
         private readonly RequestDelegate _next;
         private readonly ILogger<TenantResolutionMiddleware> _logger;
+        private const string UnknownTenant = "Unknown";
 
         public TenantResolutionMiddleware(RequestDelegate next, ILogger<TenantResolutionMiddleware> logger)
         {
@@ -25,7 +27,7 @@ namespace MicroservicesBase.API.Middleware
 
         public async Task InvokeAsync(HttpContext context, ITenantProvider tenantProvider)
         {
-            var tenantId = context.Request.Headers["X-Tenant"].FirstOrDefault();
+            var tenantId = context.Request.Headers[HttpConstants.Headers.Tenant].FirstOrDefault();
 
             if (!string.IsNullOrWhiteSpace(tenantId))
             {
@@ -36,19 +38,21 @@ namespace MicroservicesBase.API.Middleware
                 }
 
                 // Store in HttpContext.Items for access by other middleware/endpoints
-                context.Items["TenantId"] = tenantId;
+                context.Items[HttpConstants.ContextKeys.TenantId] = tenantId;
 
                 _logger.LogInformation("Tenant resolved: {TenantId}", tenantId);
             }
             else
             {
                 // No tenant header provided - log warning and continue
-                context.Items["TenantId"] = "Unknown";
-                _logger.LogWarning("No X-Tenant header provided in request to {Path}", context.Request.Path);
+                context.Items[HttpConstants.ContextKeys.TenantId] = UnknownTenant;
+                _logger.LogWarning("No {HeaderName} header provided in request to {Path}", 
+                    HttpConstants.Headers.Tenant, context.Request.Path);
             }
 
             // Push to Serilog's LogContext and continue pipeline
-            using (LogContext.PushProperty("TenantId", context.Items["TenantId"]?.ToString() ?? "Unknown"))
+            using (LogContext.PushProperty(HttpConstants.ContextKeys.TenantId, 
+                context.Items[HttpConstants.ContextKeys.TenantId]?.ToString() ?? UnknownTenant))
             {
                 await _next(context);
             }

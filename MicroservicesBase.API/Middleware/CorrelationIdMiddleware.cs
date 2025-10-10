@@ -1,3 +1,4 @@
+using MicroservicesBase.Core.Constants;
 using Serilog.Context;
 
 namespace MicroservicesBase.API.Middleware
@@ -13,7 +14,6 @@ namespace MicroservicesBase.API.Middleware
     public class CorrelationIdMiddleware
     {
         private readonly RequestDelegate _next;
-        private const string CorrelationIdHeaderName = "X-Correlation-Id";
 
         public CorrelationIdMiddleware(RequestDelegate next)
         {
@@ -23,24 +23,24 @@ namespace MicroservicesBase.API.Middleware
         public async Task InvokeAsync(HttpContext context)
         {
             // Try to get correlation ID from request header, or generate a new one
-            var correlationId = context.Request.Headers[CorrelationIdHeaderName].FirstOrDefault()
+            var correlationId = context.Request.Headers[HttpConstants.Headers.CorrelationId].FirstOrDefault()
                                 ?? Guid.NewGuid().ToString();
 
             // Store in HttpContext.Items for access by other middleware/endpoints
-            context.Items["CorrelationId"] = correlationId;
+            context.Items[HttpConstants.ContextKeys.CorrelationId] = correlationId;
 
             // Add to response headers so client can track the request
             context.Response.OnStarting(() =>
             {
-                if (!context.Response.Headers.ContainsKey(CorrelationIdHeaderName))
+                if (!context.Response.Headers.ContainsKey(HttpConstants.Headers.CorrelationId))
                 {
-                    context.Response.Headers.Add(CorrelationIdHeaderName, correlationId);
+                    context.Response.Headers.Append(HttpConstants.Headers.CorrelationId, correlationId);
                 }
                 return Task.CompletedTask;
             });
 
             // Push to Serilog's LogContext - this enriches ALL logs in this request
-            using (LogContext.PushProperty("CorrelationId", correlationId))
+            using (LogContext.PushProperty(HttpConstants.ContextKeys.CorrelationId, correlationId))
             {
                 await _next(context);
             }
