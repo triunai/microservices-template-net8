@@ -1,5 +1,6 @@
 using FluentResults;
 using Microsoft.AspNetCore.Mvc;
+using MicroservicesBase.Core.Constants;
 using MicroservicesBase.Core.Errors;
 
 namespace MicroservicesBase.API.ProblemDetails
@@ -62,7 +63,7 @@ namespace MicroservicesBase.API.ProblemDetails
             return Results.Json(
                 problemDetails,
                 statusCode: problemDetails.Status ?? 500,
-                contentType: "application/problem+json");
+                contentType: MicroservicesBase.Core.Constants.File.Mime.APP_PROBLEM_JSON);
         }
 
         /// <summary>
@@ -75,7 +76,7 @@ namespace MicroservicesBase.API.ProblemDetails
             return Results.Json(
                 problemDetails,
                 statusCode: problemDetails.Status ?? 500,
-                contentType: "application/problem+json");
+                contentType: MicroservicesBase.Core.Constants.File.Mime.APP_PROBLEM_JSON);
         }
 
         /// <summary>

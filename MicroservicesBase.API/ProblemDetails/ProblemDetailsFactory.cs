@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using MicroservicesBase.Core.Constants;
 using MicroservicesBase.Core.Errors;
 
 namespace MicroservicesBase.API.ProblemDetails
@@ -26,7 +27,7 @@ namespace MicroservicesBase.API.ProblemDetails
             
             var problemDetails = new Microsoft.AspNetCore.Mvc.ProblemDetails
             {
-                Type = $"https://api.errors/{errorCode}",
+                Type = $"{HttpConstants.ProblemTypes.ApiErrorBase}{errorCode}",
                 Title = title,
                 Status = statusCode,
                 Detail = detail ?? title,
@@ -57,7 +58,7 @@ namespace MicroservicesBase.API.ProblemDetails
             
             var problemDetails = new Microsoft.AspNetCore.Mvc.ProblemDetails
             {
-                Type = $"https://api.errors/{errorCode}",
+                Type = $"{HttpConstants.ProblemTypes.ApiErrorBase}{errorCode}",
                 Title = title,
                 Status = statusCode,
                 Detail = detail,
@@ -107,13 +108,13 @@ namespace MicroservicesBase.API.ProblemDetails
             string errorCode)
         {
             // Add correlation ID (for request tracing)
-            if (httpContext.Items.TryGetValue("CorrelationId", out var correlationId))
+            if (httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CorrelationId, out var correlationId))
             {
                 problemDetails.Extensions["correlationId"] = correlationId?.ToString();
             }
             
             // Add tenant ID (for multi-tenant context)
-            if (httpContext.Items.TryGetValue("TenantId", out var tenantId))
+            if (httpContext.Items.TryGetValue(HttpConstants.ContextKeys.TenantId, out var tenantId))
             {
                 problemDetails.Extensions["tenantId"] = tenantId?.ToString();
             }

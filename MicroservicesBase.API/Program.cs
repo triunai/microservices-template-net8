@@ -1,5 +1,6 @@
 ﻿using FastEndpoints;
 using MicroservicesBase.API.Middleware;
+using MicroservicesBase.Core.Constants;
 using MicroservicesBase.Infrastructure;
 using Microsoft.AspNetCore.Builder;
 using FastEndpoints.Swagger;
@@ -32,13 +33,13 @@ try
         options.CustomizeProblemDetails = ctx =>
         {
             // Add correlation ID to all ProblemDetails responses
-            if (ctx.HttpContext.Items.TryGetValue("CorrelationId", out var correlationId))
+            if (ctx.HttpContext.Items.TryGetValue(HttpConstants.ContextKeys.CorrelationId, out var correlationId))
             {
                 ctx.ProblemDetails.Extensions["correlationId"] = correlationId?.ToString();
             }
             
             // Add tenant ID to all ProblemDetails responses
-            if (ctx.HttpContext.Items.TryGetValue("TenantId", out var tenantId))
+            if (ctx.HttpContext.Items.TryGetValue(HttpConstants.ContextKeys.TenantId, out var tenantId))
             {
                 ctx.ProblemDetails.Extensions["tenantId"] = tenantId?.ToString();
             }
@@ -63,7 +64,7 @@ try
         .AddRedis(
             redisConnectionString: builder.Configuration.GetConnectionString("Redis")!,
             name: "redis_cache",
-            tags: new[] { "cache", "redis", "ready" });
+            tags: new[] { "cache", "redis" }); // No "ready" tag - API works without Redis (conn strings use IMemoryCache)
 
     // Add HttpContextAccessor (required for audit logging)
     builder.Services.AddHttpContextAccessor();
@@ -90,7 +91,7 @@ try
         // Per-tenant rate limiting using sliding window
         options.AddSlidingWindowLimiter("per-tenant", config =>
         {
-            config.PermitLimit = 100; // 100 requests
+            config.PermitLimit = 1000; // 1000 requests (increased for load testing)
             config.Window = TimeSpan.FromSeconds(10); // per 10 seconds
             config.SegmentsPerWindow = 2; // Sliding window with 2 segments (5s each)
             config.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
@@ -100,14 +101,14 @@ try
         // Global rate limiter (fallback for requests without tenant)
         options.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<Microsoft.AspNetCore.Http.HttpContext, string>(httpContext =>
         {
-            var tenantId = httpContext.Items["TenantId"]?.ToString() ?? "Unknown";
+            var tenantId = httpContext.Items[HttpConstants.ContextKeys.TenantId]?.ToString() ?? "Unknown";
             
             // Per-tenant partition
             return System.Threading.RateLimiting.RateLimitPartition.GetSlidingWindowLimiter(
                 partitionKey: tenantId,
                 factory: _ => new System.Threading.RateLimiting.SlidingWindowRateLimiterOptions
                 {
-                    PermitLimit = 100,
+                    PermitLimit = 1000,
                     Window = TimeSpan.FromSeconds(10),
                     SegmentsPerWindow = 2,
                     QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst,
@@ -116,22 +117,22 @@ try
         });
 
         // Customize 429 response
-        options.RejectionStatusCode = 429;
+        options.RejectionStatusCode = HttpConstants.StatusCodes.TooManyRequests;
         options.OnRejected = async (context, cancellationToken) =>
         {
-            context.HttpContext.Response.StatusCode = 429;
-            context.HttpContext.Response.Headers["Retry-After"] = "10";
-            context.HttpContext.Response.Headers["X-RateLimit-Limit"] = "100";
-            context.HttpContext.Response.Headers["X-RateLimit-Window"] = "10s";
+            context.HttpContext.Response.StatusCode = HttpConstants.StatusCodes.TooManyRequests;
+            context.HttpContext.Response.Headers[HttpConstants.Headers.RetryAfter] = "10";
+            context.HttpContext.Response.Headers[HttpConstants.Headers.RateLimitLimit] = "1000";
+            context.HttpContext.Response.Headers[HttpConstants.Headers.RateLimitWindow] = "10s";
             
             await context.HttpContext.Response.WriteAsJsonAsync(new
             {
-                type = "https://httpstatuses.com/429",
+                type = HttpConstants.ProblemTypes.TooManyRequests,
                 title = "Too Many Requests",
-                status = 429,
+                status = HttpConstants.StatusCodes.TooManyRequests,
                 detail = "Rate limit exceeded. Please retry after 10 seconds.",
-                tenantId = context.HttpContext.Items["TenantId"]?.ToString() ?? "Unknown",
-                correlationId = context.HttpContext.Items["CorrelationId"]?.ToString(),
+                tenantId = context.HttpContext.Items[HttpConstants.ContextKeys.TenantId]?.ToString() ?? "Unknown",
+                correlationId = context.HttpContext.Items[HttpConstants.ContextKeys.CorrelationId]?.ToString(),
                 timestamp = DateTimeOffset.UtcNow
             }, cancellationToken);
         };
@@ -175,9 +176,12 @@ try
     {
         options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
         {
-            diagnosticContext.Set("CorrelationId", httpContext.Items["CorrelationId"]?.ToString() ?? "Unknown");
-            diagnosticContext.Set("TenantId", httpContext.Items["TenantId"]?.ToString() ?? "Unknown");
-            diagnosticContext.Set("ClientIP", httpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown");
+            const string unknown = "Unknown";
+            diagnosticContext.Set(HttpConstants.ContextKeys.CorrelationId, 
+                httpContext.Items[HttpConstants.ContextKeys.CorrelationId]?.ToString() ?? unknown);
+            diagnosticContext.Set(HttpConstants.ContextKeys.TenantId, 
+                httpContext.Items[HttpConstants.ContextKeys.TenantId]?.ToString() ?? unknown);
+            diagnosticContext.Set("ClientIP", httpContext.Connection.RemoteIpAddress?.ToString() ?? unknown);
         };
     });
     
@@ -185,7 +189,10 @@ try
     app.UseFastEndpoints();
     app.UseSwaggerGen();
 
-    // 7. Health check endpoints
+    // 7. 404 Not Found middleware (intercepts 404s and returns ProblemDetails)
+    app.UseMiddleware<NotFoundMiddleware>();
+
+    // 8. Health check endpoints
     // Liveness: Basic check - is the process running?
     app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {

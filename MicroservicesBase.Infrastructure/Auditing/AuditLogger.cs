@@ -1,25 +1,32 @@
 using Dapper;
 using MicroservicesBase.Core.Abstractions.Auditing;
 using MicroservicesBase.Core.Configuration;
+using MicroservicesBase.Core.Constants;
 using MicroservicesBase.Core.Domain.Auditing;
+using MicroservicesBase.Infrastructure.Resilience;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Polly;
+using Polly.CircuitBreaker;
+using Polly.Registry;
 using System.Threading.Channels;
 
 namespace MicroservicesBase.Infrastructure.Auditing;
 
 /// <summary>
 /// Audit logger implementation using bounded queue + background writer pattern.
-/// Thread-safe, non-blocking, with graceful shutdown flush.
+/// Thread-safe, non-blocking, with graceful shutdown flush and resilience policies.
 /// </summary>
 public sealed class AuditLogger : IAuditLogger, IHostedService
 {
     private readonly Channel<AuditEntry> _channel;
     private readonly AuditSettings _settings;
     private readonly IConfiguration _configuration;
+    private readonly ResiliencePipelineRegistry<string> _pipelineRegistry;
+    private readonly IOptions<ResilienceSettings> _resilienceSettings;
     private readonly ILogger<AuditLogger> _logger;
     private Task? _writerTask;
     private readonly CancellationTokenSource _shutdownCts = new();
@@ -27,10 +34,14 @@ public sealed class AuditLogger : IAuditLogger, IHostedService
     public AuditLogger(
         IOptions<AuditSettings> settings,
         IConfiguration configuration,
+        ResiliencePipelineRegistry<string> pipelineRegistry,
+        IOptions<ResilienceSettings> resilienceSettings,
         ILogger<AuditLogger> logger)
     {
         _settings = settings.Value;
         _configuration = configuration;
+        _pipelineRegistry = pipelineRegistry;
+        _resilienceSettings = resilienceSettings;
         _logger = logger;
 
         // Create bounded channel (queue) with capacity limit
@@ -229,49 +240,102 @@ public sealed class AuditLogger : IAuditLogger, IHostedService
     }
 
     /// <summary>
-    /// Write audit entries for a specific tenant
+    /// Write audit entries for a specific tenant with resilience protection
     /// </summary>
-    private async Task WriteTenantBatchAsync(string tenantId, List<AuditEntry> entries, CancellationToken ct)
-    {
-        // Get tenant connection string (same way we do for data access)
-        var masterConnectionString = _configuration.GetConnectionString("TenantMaster")!;
-        
-        string? tenantConnectionString;
-        await using (var masterConn = new SqlConnection(masterConnectionString))
+        private async Task WriteTenantBatchAsync(string tenantId, List<AuditEntry> entries, CancellationToken ct)
         {
-            await masterConn.OpenAsync(ct);
-            var sql = "SELECT ConnectionString FROM Tenants WHERE Name = @TenantId AND IsActive = 1";
-            tenantConnectionString = await masterConn.QueryFirstOrDefaultAsync<string>(sql, new { TenantId = tenantId });
-        }
+            // Get or create pipeline for this tenant on-demand (same pattern as SalesReadDac)
+            var pipelineKey = tenantId; // Just use tenant ID as key
+            if (!_pipelineRegistry.TryGetPipeline(pipelineKey, out var pipeline))
+            {
+                // Create pipeline on first access
+                _pipelineRegistry.TryAddBuilder(pipelineKey, (builder, context) =>
+                {
+                    var settings = _resilienceSettings.Value.AuditDb;
+                    builder.AddPipelineFromSettings(
+                        settings,
+                        ResiliencePolicies.IsSqlTransientError,
+                        $"AuditDb:{tenantId}",
+                        _logger);
+                });
+                pipeline = _pipelineRegistry.GetPipeline(pipelineKey);
+            }
 
-        if (string.IsNullOrEmpty(tenantConnectionString))
+        try
         {
-            _logger.LogWarning("Tenant {TenantId} not found or inactive. Cannot write audit logs.", tenantId);
-            return;
+            await pipeline.ExecuteAsync(async token =>
+            {
+                // Get tenant connection string (same way we do for data access)
+                var masterConnectionString = _configuration.GetConnectionString("TenantMaster")!;
+                
+                string? tenantConnectionString;
+                await using (var masterConn = new SqlConnection(masterConnectionString))
+                {
+                    await masterConn.OpenAsync(token);
+                    tenantConnectionString = await masterConn.QueryFirstOrDefaultAsync<string>(
+                        SqlConstants.Queries.GetTenantConnectionString, 
+                        new { TenantId = tenantId });
+                }
+
+                if (string.IsNullOrEmpty(tenantConnectionString))
+                {
+                    _logger.LogWarning("Tenant {TenantId} not found or inactive. Cannot write audit logs.", tenantId);
+                    return;
+                }
+
+                // Bulk insert audit entries with CommandTimeout alignment
+                await using var tenantConn = new SqlConnection(tenantConnectionString);
+                await tenantConn.OpenAsync(token);
+
+                const string insertSql = @"
+                    INSERT INTO dbo.AuditLog (
+                        TenantId, UserId, ClientId, IpAddress, UserAgent,
+                        Action, EntityType, EntityId,
+                        Timestamp, CorrelationId, RequestPath,
+                        IsSuccess, StatusCode, ErrorCode, ErrorMessage, DurationMs,
+                        RequestData, ResponseData, Delta,
+                        IdempotencyKey, Source, RequestHash
+                    ) VALUES (
+                        @TenantId, @UserId, @ClientId, @IpAddress, @UserAgent,
+                        @Action, @EntityType, @EntityId,
+                        @Timestamp, @CorrelationId, @RequestPath,
+                        @IsSuccess, @StatusCode, @ErrorCode, @ErrorMessage, @DurationMs,
+                        @RequestData, @ResponseData, @Delta,
+                        @IdempotencyKey, @Source, @RequestHash
+                    )";
+
+                // Use CommandTimeout of 3.5s (less than Polly's 4s timeout)
+                    await tenantConn.ExecuteAsync(insertSql, entries, commandTimeout: SqlConstants.CommandTimeouts.AuditDb);
+                
+                _logger.LogDebug("Successfully wrote {Count} audit entries for tenant {TenantId}", entries.Count, tenantId);
+            }, ct);
         }
-
-        // Bulk insert audit entries
-        await using var tenantConn = new SqlConnection(tenantConnectionString);
-        await tenantConn.OpenAsync(ct);
-
-        const string insertSql = @"
-            INSERT INTO dbo.AuditLog (
-                TenantId, UserId, ClientId, IpAddress, UserAgent,
-                Action, EntityType, EntityId,
-                Timestamp, CorrelationId, RequestPath,
-                IsSuccess, StatusCode, ErrorCode, ErrorMessage, DurationMs,
-                RequestData, ResponseData, Delta,
-                IdempotencyKey, Source, RequestHash
-            ) VALUES (
-                @TenantId, @UserId, @ClientId, @IpAddress, @UserAgent,
-                @Action, @EntityType, @EntityId,
-                @Timestamp, @CorrelationId, @RequestPath,
-                @IsSuccess, @StatusCode, @ErrorCode, @ErrorMessage, @DurationMs,
-                @RequestData, @ResponseData, @Delta,
-                @IdempotencyKey, @Source, @RequestHash
-            )";
-
-        await tenantConn.ExecuteAsync(insertSql, entries);
+        catch (BrokenCircuitException)
+        {
+            _logger.LogWarning("Audit DB circuit breaker OPEN for tenant {TenantId}, falling back to Serilog", tenantId);
+            
+            // Circuit breaker is open - fallback to Serilog immediately
+            if (_settings.Backpressure.FallbackToFile)
+            {
+                foreach (var entry in entries)
+                {
+                    LogToSerilog(entry);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to write audit batch for tenant {TenantId}, falling back to Serilog", tenantId);
+            
+            // Database write failed - fallback to Serilog
+            if (_settings.Backpressure.FallbackToFile)
+            {
+                foreach (var entry in entries)
+                {
+                    LogToSerilog(entry);
+                }
+            }
+        }
     }
 
     /// <summary>
