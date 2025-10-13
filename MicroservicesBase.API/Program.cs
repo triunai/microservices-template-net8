@@ -213,7 +213,7 @@ try
         ResponseWriter = HealthChecks.UI.Client.UIResponseWriter.WriteHealthCheckUIResponse
     });
 
-    Log.Information("Application startup complete");
+    Log.Information("Application startup complete");  
     Log.Information("Listening on: {Urls}", string.Join(", ", builder.WebHost.GetSetting("urls")?.Split(';') ?? new[] { "default" }));
 
     app.Run();

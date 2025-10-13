@@ -115,6 +115,11 @@ namespace MicroservicesBase.Infrastructure
             services.AddScoped<ISalesReadDac, SalesReadDac>();
             services.AddScoped<ITenantProvider, HeaderTenantProvider>();
 
+            // Cache warmup hosted service (runs at startup to pre-warm tenant connection strings)
+            // This prevents cold-start cache stampede under high concurrency (200+ req/s)
+            // Dynamically discovers all active tenants from TenantMaster database
+            services.AddHostedService<CacheWarmupHostedService>();
+
             return services;
         }
     }
