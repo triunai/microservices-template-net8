@@ -115,6 +115,10 @@ namespace MicroservicesBase.Infrastructure
             services.AddScoped<ISalesReadDac, SalesReadDac>();
             services.AddScoped<ITenantProvider, HeaderTenantProvider>();
 
+            // Register Mapperly mappers (singleton - stateless, compile-time generated)
+            // Zero runtime overhead, no reflection, just pure generated C# code
+            services.AddSingleton<Mapping.SalesMapper>();
+
             // Cache warmup hosted service (runs at startup to pre-warm tenant connection strings)
             // This prevents cold-start cache stampede under high concurrency (200+ req/s)
             // Dynamically discovers all active tenants from TenantMaster database

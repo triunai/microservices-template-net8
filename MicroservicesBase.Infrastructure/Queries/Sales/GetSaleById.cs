@@ -19,17 +19,27 @@ namespace MicroservicesBase.Infrastructure.Queries.Sales
         // 2) Validation rules (FluentValidation)
         public sealed class Validator : AbstractValidator<GetSaleByIdQuery>
         {
-            // regex checks, validation rules, no need to write unncessary validation in handler layer
-            // can write upsert checks( if object exists on handler layer ), otherwise write not null checks, length checks here
             public Validator()
             {
-                RuleFor(x => x.SaleId);
-                
+                // Validate GUID is not empty (00000000-0000-0000-0000-000000000000)
+                RuleFor(x => x.SaleId)
+                    .NotEqual(Guid.Empty)
+                    .WithErrorCode("SALE_ID_INVALID")
+                    .WithMessage("Sale ID cannot be empty");
             }
         }
 
-        public sealed class Handler(ISalesReadDac dac) : IRequestHandler<GetSaleByIdQuery, Result<SaleResponse>>
+        public sealed class Handler : IRequestHandler<GetSaleByIdQuery, Result<SaleResponse>>
         {
+            private readonly ISalesReadDac _dac;
+            private readonly Mapping.SalesMapper _mapper;
+            
+            public Handler(ISalesReadDac dac, Mapping.SalesMapper mapper)
+            {
+                _dac = dac;
+                _mapper = mapper;
+            }
+            
             public async Task<Result<SaleResponse>> Handle(GetSaleByIdQuery q, CancellationToken ct)
             {
                 // validate inline (no separate pipeline needed)
@@ -39,28 +49,14 @@ namespace MicroservicesBase.Infrastructure.Queries.Sales
                     return Result.Fail<SaleResponse>(vr.Errors.Select(e => e.ErrorCode ?? "VALIDATION_ERROR").DefaultIfEmpty("VALIDATION_ERROR").ToArray());
 
                 // fetch from persistence
-                var data = await dac.GetByIdAsync(q.SaleId, ct);
+                var data = await _dac.GetByIdAsync(q.SaleId, ct);
                 if (data is null)
                     return Result.Fail<SaleResponse>("SALE_NOT_FOUND");
 
-                // map persistence model -> response
-                var items = data.Items
-                    .Select(i => new SaleResponse.Item(i.Sku, i.Qty, i.UnitPrice, i.Qty * i.UnitPrice))
-                    .ToList();
+                //  Map with Mapperly (compile-time, zero-overhead mapping)
+                var response = _mapper.ToResponse(data);
 
-                var res = new SaleResponse(
-                    data.Id,
-                    data.TenantId,
-                    data.StoreId,
-                    data.RegisterId,
-                    data.ReceiptNumber,
-                    data.CreatedAt,
-                    data.NetTotal,
-                    data.TaxTotal,
-                    data.GrandTotal,
-                    items);
-
-                return Result.Ok(res);
+                return Result.Ok(response);
             }
         }
     }
