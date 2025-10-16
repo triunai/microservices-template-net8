@@ -37,7 +37,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
             await Send.ResponseAsync(problemDetails, problemDetails.Status ?? 500, ct);
             return;
         }
-
+                     
         // Success path
         await Send.OkAsync(res.Value, ct);
     }

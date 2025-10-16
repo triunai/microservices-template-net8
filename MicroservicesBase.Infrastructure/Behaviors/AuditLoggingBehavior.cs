@@ -217,27 +217,43 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
     }
 
     /// <summary>
-    /// Determine HTTP status code from exception
+    /// Determine HTTP status code from exception using centralized error handling.
+    /// Uses ErrorCatalog.GetStatusCode() for AppException types, falls back to HttpConstants for generic exceptions.
     /// </summary>
     private static int DetermineStatusCodeFromException(Exception exception)
     {
+        // Use centralized error handling for custom exceptions
+        if (exception is MicroservicesBase.Core.Errors.AppException appEx)
+        {
+            return MicroservicesBase.Core.Errors.ErrorCatalog.GetStatusCode(appEx.ErrorCode);
+        }
+        
+        // Fallback for generic .NET exceptions using HttpConstants
         return exception switch
         {
-            InvalidOperationException => 404,
-            ArgumentException => 400,
-            UnauthorizedAccessException => 401,
-            _ => 500
+            ArgumentException => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.BadRequest,
+            UnauthorizedAccessException => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.Unauthorized,
+            InvalidOperationException => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.NotFound,
+            NotImplementedException => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.ServiceUnavailable,
+            TimeoutException => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.ServiceUnavailable,
+            _ => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.InternalServerError
         };
     }
 
     /// <summary>
-    /// Extract error code from exception (if it has one)
+    /// Extract error code from exception using centralized error handling.
+    /// Returns ErrorCode for AppException types, null for generic exceptions.
     /// </summary>
     private static string? ExtractErrorCode(Exception exception)
     {
-        // Check if exception has an ErrorCode property (custom exceptions)
-        var errorCodeProperty = exception.GetType().GetProperty("ErrorCode");
-        return errorCodeProperty?.GetValue(exception)?.ToString();
+        // Use centralized error handling for custom exceptions
+        if (exception is MicroservicesBase.Core.Errors.AppException appEx)
+        {
+            return appEx.ErrorCode;
+        }
+        
+        // Generic exceptions don't have error codes
+        return null;
     }
 }
 

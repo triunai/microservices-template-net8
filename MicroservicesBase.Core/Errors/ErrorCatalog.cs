@@ -21,6 +21,7 @@ namespace MicroservicesBase.Core.Errors
         
         // ===== Sale Errors =====
         public const string SALE_NOT_FOUND = "SALE_NOT_FOUND";
+        public const string SALE_ID_INVALID = "SALE_ID_INVALID";
         public const string SALE_ALREADY_VOIDED = "SALE_ALREADY_VOIDED";
         public const string SALE_DUPLICATE_RECEIPT = "SALE_DUPLICATE_RECEIPT";
         public const string SALE_INVALID_TOTAL = "SALE_INVALID_TOTAL";
@@ -36,81 +37,128 @@ namespace MicroservicesBase.Core.Errors
         public const string PAYMENT_INVALID_AMOUNT = "PAYMENT_INVALID_AMOUNT";
         
         /// <summary>
+        /// Determines if an error code represents a validation error.
+        /// Validation errors return 400 Bad Request.
+        /// 
+        /// Uses a layered approach:
+        /// 1. Explicit VALIDATION_ERROR constant
+        /// 2. Pattern-based detection for custom error codes (*_INVALID, *_REQUIRED, etc.)
+        /// 3. Safety net for FluentValidation default error codes (*Validator)
+        /// </summary>
+        public static bool IsValidationError(string errorCode)
+        {
+            // Layer 1: Explicit validation marker
+            if (errorCode == VALIDATION_ERROR)
+                return true;
+            
+            // Layer 2: Custom validation patterns (your error code conventions)
+            if (errorCode.EndsWith("_INVALID") || 
+                errorCode.EndsWith("_REQUIRED") ||
+                errorCode.EndsWith("_FORMAT_INVALID") ||
+                errorCode.EndsWith("_TOO_LONG") ||
+                errorCode.EndsWith("_TOO_SHORT"))
+                return true;
+            
+            // Layer 3: SAFETY NET - Catch FluentValidation default error codes
+            // Handles cases where .WithErrorCode() is forgotten
+            // Examples: NotEqualValidator, NotEmptyValidator, LengthValidator, etc.
+            if (errorCode.EndsWith("Validator"))
+                return true;
+            
+            // Layer 3b: Additional FluentValidation patterns
+            if (errorCode.StartsWith("NotEmpty") || 
+                errorCode.StartsWith("NotEqual") ||
+                errorCode.StartsWith("GreaterThan") ||
+                errorCode.StartsWith("LessThan") ||
+                errorCode.StartsWith("Must"))
+                return true;
+            
+            return false;
+        }
+        
+        /// <summary>
         /// Maps error codes to HTTP status codes.
         /// This provides a single source of truth for status code mapping.
         /// </summary>
-        public static int GetStatusCode(string errorCode) => errorCode switch
+        public static int GetStatusCode(string errorCode)
         {
-            // 400 Bad Request
-            VALIDATION_ERROR => 400,
-            SALE_INVALID_TOTAL => 400,
-            ITEM_INVALID_QUANTITY => 400,
-            PAYMENT_INVALID_AMOUNT => 400,
-            TENANT_HEADER_MISSING => 400,
+            // Early return for validation errors (fast path - handles 90% of bad requests)
+            // This avoids checking the entire switch for validation errors
+            if (IsValidationError(errorCode))
+                return 400;
             
-            // 401 Unauthorized
-            UNAUTHORIZED => 401,
-            
-            // 403 Forbidden
-            FORBIDDEN => 403,
-            TENANT_INACTIVE => 403,
-            
-            // 404 Not Found
-            TENANT_NOT_FOUND => 404,
-            SALE_NOT_FOUND => 404,
-            ITEM_NOT_FOUND => 404,
-            
-            // 409 Conflict
-            TENANT_CONFLICT => 409,
-            SALE_DUPLICATE_RECEIPT => 409,
-            SALE_ALREADY_VOIDED => 409,
-            
-            // 402 Payment Required (or 400 for payment issues)
-            PAYMENT_FAILED => 402,
-            PAYMENT_DECLINED => 402,
-            
-            // 422 Unprocessable Entity
-            ITEM_INSUFFICIENT_STOCK => 422,
-            
-            // 500 Internal Server Error (default)
-            _ => 500
-        };
+            // Business logic errors only (remaining 10%)
+            return errorCode switch
+            {
+                // 401 Unauthorized
+                UNAUTHORIZED => 401,
+                
+                // 403 Forbidden
+                FORBIDDEN => 403,
+                TENANT_INACTIVE => 403,
+                
+                // 404 Not Found
+                TENANT_NOT_FOUND => 404,
+                SALE_NOT_FOUND => 404,
+                ITEM_NOT_FOUND => 404,
+                
+                // 409 Conflict
+                TENANT_CONFLICT => 409,
+                SALE_DUPLICATE_RECEIPT => 409,
+                SALE_ALREADY_VOIDED => 409,
+                
+                // 402 Payment Required
+                PAYMENT_FAILED => 402,
+                PAYMENT_DECLINED => 402,
+                
+                // 422 Unprocessable Entity
+                ITEM_INSUFFICIENT_STOCK => 422,
+                
+                // 500 Internal Server Error (default)
+                _ => 500
+            };
+        }
         
         /// <summary>
         /// Maps error codes to user-friendly titles.
+        /// Uses early return for validation errors (consistency with GetStatusCode).
         /// </summary>
-        public static string GetTitle(string errorCode) => errorCode switch
+        public static string GetTitle(string errorCode)
         {
-            // General
-            INTERNAL_ERROR => "Internal Server Error",
-            VALIDATION_ERROR => "Validation Failed",
-            UNAUTHORIZED => "Unauthorized",
-            FORBIDDEN => "Forbidden",
+            // Early return for validation errors (consistent messaging)
+            if (IsValidationError(errorCode))
+                return "Validation Failed";
             
-            // Tenant
-            TENANT_NOT_FOUND => "Tenant Not Found",
-            TENANT_INACTIVE => "Tenant Inactive",
-            TENANT_CONFLICT => "Tenant Conflict",
-            TENANT_HEADER_MISSING => "Tenant Header Missing",
-            
-            // Sale
-            SALE_NOT_FOUND => "Sale Not Found",
-            SALE_ALREADY_VOIDED => "Sale Already Voided",
-            SALE_DUPLICATE_RECEIPT => "Duplicate Receipt Number",
-            SALE_INVALID_TOTAL => "Invalid Sale Total",
-            
-            // Item
-            ITEM_NOT_FOUND => "Item Not Found",
-            ITEM_INSUFFICIENT_STOCK => "Insufficient Stock",
-            ITEM_INVALID_QUANTITY => "Invalid Quantity",
-            
-            // Payment
-            PAYMENT_FAILED => "Payment Failed",
-            PAYMENT_DECLINED => "Payment Declined",
-            PAYMENT_INVALID_AMOUNT => "Invalid Payment Amount",
-            
-            _ => "An Error Occurred"
-        };
+            // Business logic error titles
+            return errorCode switch
+            {
+                // General
+                INTERNAL_ERROR => "Internal Server Error",
+                UNAUTHORIZED => "Unauthorized",
+                FORBIDDEN => "Forbidden",
+                
+                // Tenant
+                TENANT_NOT_FOUND => "Tenant Not Found",
+                TENANT_INACTIVE => "Tenant Inactive",
+                TENANT_CONFLICT => "Tenant Conflict",
+                TENANT_HEADER_MISSING => "Tenant Header Missing",
+                
+                // Sale
+                SALE_NOT_FOUND => "Sale Not Found",
+                SALE_ALREADY_VOIDED => "Sale Already Voided",
+                SALE_DUPLICATE_RECEIPT => "Duplicate Receipt Number",
+                
+                // Item
+                ITEM_NOT_FOUND => "Item Not Found",
+                ITEM_INSUFFICIENT_STOCK => "Insufficient Stock",
+                
+                // Payment
+                PAYMENT_FAILED => "Payment Failed",
+                PAYMENT_DECLINED => "Payment Declined",
+                
+                _ => "An Error Occurred"
+            };
+        }
     }
 }
 

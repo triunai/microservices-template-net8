@@ -287,6 +287,7 @@ public sealed class AuditLogger : IAuditLogger, IHostedService
                 await using var tenantConn = new SqlConnection(tenantConnectionString);
                 await tenantConn.OpenAsync(token);
 
+                //todo: make reusable stored proc
                 const string insertSql = @"
                     INSERT INTO dbo.AuditLog (
                         TenantId, UserId, ClientId, IpAddress, UserAgent,

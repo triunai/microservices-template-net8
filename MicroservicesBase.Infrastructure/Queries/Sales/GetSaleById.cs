@@ -48,7 +48,7 @@ namespace MicroservicesBase.Infrastructure.Queries.Sales
                 if (!vr.IsValid)
                     return Result.Fail<SaleResponse>(vr.Errors.Select(e => e.ErrorCode ?? "VALIDATION_ERROR").DefaultIfEmpty("VALIDATION_ERROR").ToArray());
 
-                // fetch from persistence
+                // fetch from persistence(ensure has try catch for safe error handling)
                 var data = await _dac.GetByIdAsync(q.SaleId, ct);
                 if (data is null)
                     return Result.Fail<SaleResponse>("SALE_NOT_FOUND");

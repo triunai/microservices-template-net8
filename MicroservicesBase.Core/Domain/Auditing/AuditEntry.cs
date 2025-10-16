@@ -4,6 +4,7 @@ namespace MicroservicesBase.Core.Domain.Auditing;
 /// Represents a single audit log entry capturing who did what, when, where, and the result.
 /// Immutable record for thread-safety in queuing scenarios.
 /// </summary>
+// Mapped from SQL-AuditLogging table
 public sealed record AuditEntry
 {
     // ==========================================
