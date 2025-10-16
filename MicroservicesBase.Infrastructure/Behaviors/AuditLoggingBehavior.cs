@@ -2,6 +2,7 @@ using MediatR;
 using MicroservicesBase.Core.Abstractions.Auditing;
 using MicroservicesBase.Core.Abstractions.Tenancy;
 using MicroservicesBase.Core.Configuration;
+using MicroservicesBase.Core.Constants;
 using MicroservicesBase.Core.Domain.Auditing;
 using MicroservicesBase.Infrastructure.Auditing;
 using Microsoft.AspNetCore.Http;
@@ -82,14 +83,19 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
             // Execute the handler
             response = await next();
 
-            // Capture success
+            // Check if response is a FluentResults Result<T> and handle failures
+            var (isSuccess, statusCode, errorCode, errorMessage) = AnalyzeResponse(response);
+            
+            // Capture result (success or FluentResults failure) - ALWAYS capture response data for both success and failure
             auditEntry = auditEntry with
             {
-                IsSuccess = true,
-                StatusCode = 200,
+                IsSuccess = isSuccess,
+                StatusCode = statusCode,
+                ErrorCode = errorCode,
+                ErrorMessage = errorMessage,
                 DurationMs = (int)stopwatch.ElapsedMilliseconds,
                 ResponseData = _settings.Payloads.LogResponses 
-                    ? PayloadProcessor.ProcessPayload(response, _settings.Payloads) 
+                    ? PayloadProcessor.ProcessPayload(BuildSerializableResponse(response), _settings.Payloads) 
                     : null
             };
         }
@@ -97,14 +103,17 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
         {
             exception = ex;
             
-            // Capture failure
+            // Capture failure - also capture response data if available
             auditEntry = auditEntry with
             {
                 IsSuccess = false,
                 StatusCode = DetermineStatusCodeFromException(ex),
                 ErrorCode = ExtractErrorCode(ex),
                 ErrorMessage = ex.Message,
-                DurationMs = (int)stopwatch.ElapsedMilliseconds
+                DurationMs = (int)stopwatch.ElapsedMilliseconds,
+                ResponseData = _settings.Payloads.LogResponses 
+                    ? PayloadProcessor.ProcessPayload(BuildExceptionResponse(ex), _settings.Payloads) 
+                    : null
             };
 
             throw;
@@ -125,6 +134,103 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
         }
 
         return response!;
+    }
+
+    /// <summary>
+    /// Analyze response to detect FluentResults failures and determine audit details
+    /// </summary>
+    private static (bool IsSuccess, int StatusCode, string? ErrorCode, string? ErrorMessage) AnalyzeResponse<T>(T response)
+    {
+        // Check if response is a FluentResults Result<T>
+        if (response is FluentResults.ResultBase result)
+        {
+            if (result.IsFailed)
+            {
+                // Extract first error for audit logging
+                var firstError = result.Errors.FirstOrDefault();
+                var errorCode = firstError?.Message ?? "UNKNOWN_ERROR";
+                
+                // Map FluentResults error codes to HTTP status codes
+                var statusCode = errorCode switch
+                {
+                    "SALE_NOT_FOUND" => HttpConstants.StatusCodes.NotFound,
+                    "VALIDATION_ERROR" => HttpConstants.StatusCodes.BadRequest,
+                    "TENANT_NOT_FOUND" => HttpConstants.StatusCodes.NotFound,
+                    "UNAUTHORIZED" => HttpConstants.StatusCodes.Unauthorized,
+                    "FORBIDDEN" => HttpConstants.StatusCodes.Forbidden,
+                    _ => HttpConstants.StatusCodes.InternalServerError
+                };
+                
+                return (false, statusCode, errorCode, firstError?.Message);
+            }
+            
+            // Success case
+            return (true, HttpConstants.StatusCodes.Ok, null, null);
+        }
+        
+        // Non-FluentResults response - assume success
+        return (true, HttpConstants.StatusCodes.Ok, null, null);
+    }
+
+    /// <summary>
+    /// Build a safe, serializable object for ResponseData.
+    /// - For Result<T> success: returns the Value
+    /// - For Result<T> failure: returns a compact error shape { isFailed, errors, reasons }
+    /// - Otherwise: returns the original response
+    /// </summary>
+    private static object? BuildSerializableResponse<T>(T response)
+    {
+        if (response is FluentResults.ResultBase result)
+        {
+            if (result.IsFailed)
+            {
+                var errors = result.Errors?.Select(e => e.Message).Where(m => !string.IsNullOrWhiteSpace(m)).ToArray() ?? Array.Empty<string>();
+                var reasons = result.Reasons?.Select(r => r.Message).Where(m => !string.IsNullOrWhiteSpace(m)).ToArray() ?? Array.Empty<string>();
+                return new
+                {
+                    isFailed = true,
+                    isSuccess = false,
+                    errors,
+                    reasons
+                };
+            }
+
+            // Success: try to extract Value via reflection for Result<T>
+            var valueProp = result.GetType().GetProperty("Value");
+            if (valueProp != null)
+            {
+                try
+                {
+                    return valueProp.GetValue(result);
+                }
+                catch
+                {
+                    // fall through
+                }
+            }
+
+            // If we can't extract Value, serialize a minimal success shape
+            return new { isFailed = false, isSuccess = true };
+        }
+
+        return response;
+    }
+
+    /// <summary>
+    /// Build a safe, serializable object for ResponseData from exceptions.
+    /// Creates a structured error response that can be audited.
+    /// </summary>
+    private static object BuildExceptionResponse(Exception exception)
+    {
+        return new
+        {
+            isFailed = true,
+            isSuccess = false,
+            exceptionType = exception.GetType().Name,
+            message = exception.Message,
+            errorCode = ExtractErrorCode(exception),
+            stackTrace = exception.StackTrace
+        };
     }
 
     /// <summary>
@@ -231,12 +337,12 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
         // Fallback for generic .NET exceptions using HttpConstants
         return exception switch
         {
-            ArgumentException => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.BadRequest,
-            UnauthorizedAccessException => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.Unauthorized,
-            InvalidOperationException => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.NotFound,
-            NotImplementedException => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.ServiceUnavailable,
-            TimeoutException => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.ServiceUnavailable,
-            _ => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.InternalServerError
+            ArgumentException => HttpConstants.StatusCodes.BadRequest,
+            UnauthorizedAccessException => HttpConstants.StatusCodes.Unauthorized,
+            InvalidOperationException =>    HttpConstants.StatusCodes.NotFound,
+            NotImplementedException => HttpConstants.StatusCodes.ServiceUnavailable,
+            TimeoutException => HttpConstants.StatusCodes.ServiceUnavailable,
+            _ => HttpConstants.StatusCodes.InternalServerError
         };
     }
 

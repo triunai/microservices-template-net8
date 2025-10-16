@@ -8,6 +8,8 @@ using MicroservicesBase.Infrastructure.Persistence;
 using MicroservicesBase.Infrastructure.Queries.Sales;
 using MicroservicesBase.Infrastructure.Resilience;
 using MicroservicesBase.Infrastructure.Tenancy;
+using MicroservicesBase.Infrastructure.Services.Audit;
+using MicroservicesBase.Infrastructure.Mapping.Audit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Caching.Memory;
@@ -118,6 +120,10 @@ namespace MicroservicesBase.Infrastructure
             // Register Mapperly mappers (singleton - stateless, compile-time generated)
             // Zero runtime overhead, no reflection, just pure generated C# code
             services.AddSingleton<Mapping.SalesMapper>();
+            services.AddSingleton<Mapping.Audit.AuditPayloadMapper>();
+
+            // Register audit services
+            services.AddScoped<IAuditPayloadDecoderService, AuditPayloadDecoderService>();
 
             // Cache warmup hosted service (runs at startup to pre-warm tenant connection strings)
             // This prevents cold-start cache stampede under high concurrency (200+ req/s)
