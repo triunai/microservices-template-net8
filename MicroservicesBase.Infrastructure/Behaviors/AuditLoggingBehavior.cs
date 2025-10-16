@@ -180,6 +180,9 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
     /// </summary>
     private static object? BuildSerializableResponse<T>(T response, HttpContext? httpContext)
     {
+        // Debug: Log what type we're dealing with
+        System.Diagnostics.Debug.WriteLine($"BuildSerializableResponse: response type = {response?.GetType().Name}, is ResultBase = {response is FluentResults.ResultBase}");
+        
         if (response is FluentResults.ResultBase result)
         {
             if (result.IsFailed)
@@ -232,11 +235,54 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
 
             // Success: try to extract Value via reflection for Result<T>
             var valueProp = result.GetType().GetProperty("Value");
+            System.Diagnostics.Debug.WriteLine($"Success path: valueProp found = {valueProp != null}");
             if (valueProp != null)
             {
                 try
                 {
-                    return valueProp.GetValue(result);
+                    var actualData = valueProp.GetValue(result);
+                    System.Diagnostics.Debug.WriteLine($"Success path: actualData extracted = {actualData != null}");
+                    
+                    // Wrap successful response with metadata for customer support ease
+                    System.Diagnostics.Debug.WriteLine($"Success path: httpContext is {(httpContext != null ? "not null" : "null")}");
+                    if (httpContext != null)
+                    {
+                        try
+                        {
+                            var correlationId = httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CorrelationId, out var corrId) ? corrId?.ToString() : null;
+                            var tenantId = httpContext.Items.TryGetValue(HttpConstants.ContextKeys.TenantId, out var tenant) ? tenant?.ToString() : null;
+                            var traceId = httpContext.TraceIdentifier;
+                            var instance = httpContext.Request.Path.ToString();
+
+                            System.Diagnostics.Debug.WriteLine($"Success path: Creating metadata wrapper with correlationId={correlationId}, tenantId={tenantId}");
+                            
+                            var wrappedResponse = new
+                            {
+                                data = actualData,
+                                metadata = new
+                                {
+                                    correlationId,
+                                    tenantId,
+                                    traceId,
+                                    instance,
+                                    timestamp = DateTimeOffset.UtcNow,
+                                    statusCode = 200,
+                                    isSuccess = true
+                                }
+                            };
+                            
+                            System.Diagnostics.Debug.WriteLine($"Success path: Metadata wrapper created successfully");
+                            return wrappedResponse;
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Success path: Exception creating metadata wrapper: {ex.Message}");
+                            return actualData; // Fallback on exception
+                        }
+                    }
+                    
+                    System.Diagnostics.Debug.WriteLine($"Success path: HttpContext is null, returning raw data");
+                    return actualData; // Fallback if no HttpContext
                 }
                 catch
                 {
@@ -244,8 +290,31 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
                 }
             }
 
-            // If we can't extract Value, serialize a minimal success shape
-            return new { isFailed = false, isSuccess = true };
+            // If we can't extract Value, serialize a minimal success shape with metadata
+            if (httpContext != null)
+            {
+                var correlationId = httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CorrelationId, out var corrId) ? corrId?.ToString() : null;
+                var tenantId = httpContext.Items.TryGetValue(HttpConstants.ContextKeys.TenantId, out var tenant) ? tenant?.ToString() : null;
+                var traceId = httpContext.TraceIdentifier;
+                var instance = httpContext.Request.Path.ToString();
+
+                return new
+                {
+                    isFailed = false,
+                    isSuccess = true,
+                    metadata = new
+                    {
+                        correlationId,
+                        tenantId,
+                        traceId,
+                        instance,
+                        timestamp = DateTimeOffset.UtcNow,
+                        statusCode = 200
+                    }
+                };
+            }
+
+            return new { isFailed = false, isSuccess = true }; // Final fallback
         }
 
         return response;
