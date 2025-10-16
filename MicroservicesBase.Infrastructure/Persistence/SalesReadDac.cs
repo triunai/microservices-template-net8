@@ -94,6 +94,8 @@ namespace MicroservicesBase.Infrastructure.Persistence
                 _logger.LogDebug("Successfully retrieved sale {SaleId} with {ItemCount} items for tenant {TenantId}", 
                     saleId, items.Count, tenantId);
 
+
+                //todo: mapperly 
                 return new SaleReadModel(
                     head.Id,
                     head.TenantId,

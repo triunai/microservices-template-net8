@@ -18,7 +18,7 @@ internal static class PayloadProcessor
     };
 
     /// <summary>
-    /// Process payload: mask PII → compress → enforce size limit
+    /// Process payload: mask PII → enforce size limit → compress
     /// </summary>
     public static byte[]? ProcessPayload(object? payload, PayloadSettings settings)
     {
@@ -33,20 +33,20 @@ internal static class PayloadProcessor
             // 2. Mask PII fields
             json = MaskPII(json, settings.MaskFields);
             
-            // 3. Compress if enabled
+            // 3. Enforce size limit BEFORE compression (prevents Gzip corruption)
+            var maxSizeBytes = settings.MaxSizeKB * 1024;
+            if (json.Length > maxSizeBytes)
+            {
+                // Truncate JSON string and add marker (preserves JSON validity)
+                var truncationMarker = "... [TRUNCATED]";
+                var availableSpace = maxSizeBytes - truncationMarker.Length;
+                json = json.Substring(0, Math.Max(0, availableSpace)) + truncationMarker;
+            }
+            
+            // 4. Compress if enabled (after size limiting)
             var data = settings.Compress 
                 ? CompressString(json) 
                 : Encoding.UTF8.GetBytes(json);
-            
-            // 4. Enforce size limit
-            var maxSizeBytes = settings.MaxSizeKB * 1024;
-            if (data.Length > maxSizeBytes)
-            {
-                // Truncate and add marker
-                var truncated = new byte[maxSizeBytes];
-                Array.Copy(data, truncated, maxSizeBytes);
-                return truncated;
-            }
             
             return data;
         }
