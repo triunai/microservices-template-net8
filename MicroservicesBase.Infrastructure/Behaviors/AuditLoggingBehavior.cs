@@ -95,7 +95,7 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
                 ErrorMessage = errorMessage,
                 DurationMs = (int)stopwatch.ElapsedMilliseconds,
                 ResponseData = _settings.Payloads.LogResponses 
-                    ? PayloadProcessor.ProcessPayload(BuildSerializableResponse(response), _settings.Payloads) 
+                    ? PayloadProcessor.ProcessPayload(BuildSerializableResponse(response, httpContext), _settings.Payloads) 
                     : null
             };
         }
@@ -112,7 +112,7 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
                 ErrorMessage = ex.Message,
                 DurationMs = (int)stopwatch.ElapsedMilliseconds,
                 ResponseData = _settings.Payloads.LogResponses 
-                    ? PayloadProcessor.ProcessPayload(BuildExceptionResponse(ex), _settings.Payloads) 
+                    ? PayloadProcessor.ProcessPayload(BuildExceptionResponse(ex, httpContext), _settings.Payloads) 
                     : null
             };
 
@@ -175,10 +175,10 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
     /// <summary>
     /// Build a safe, serializable object for ResponseData.
     /// - For Result<T> success: returns the Value
-    /// - For Result<T> failure: returns a compact error shape { isFailed, errors, reasons }
+    /// - For Result<T> failure: returns an enriched error shape with context (correlationId, tenantId, etc.)
     /// - Otherwise: returns the original response
     /// </summary>
-    private static object? BuildSerializableResponse<T>(T response)
+    private static object? BuildSerializableResponse<T>(T response, HttpContext? httpContext)
     {
         if (response is FluentResults.ResultBase result)
         {
@@ -186,13 +186,48 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
             {
                 var errors = result.Errors?.Select(e => e.Message).Where(m => !string.IsNullOrWhiteSpace(m)).ToArray() ?? Array.Empty<string>();
                 var reasons = result.Reasons?.Select(r => r.Message).Where(m => !string.IsNullOrWhiteSpace(m)).ToArray() ?? Array.Empty<string>();
-                return new
+                
+                // Get the first error for error code
+                var firstError = result.Errors?.FirstOrDefault();
+                var errorCode = firstError?.Message ?? "UNKNOWN_ERROR";
+                
+                // Enrich with HTTP context (same as ProblemDetails)
+                var enrichedResponse = new
                 {
                     isFailed = true,
                     isSuccess = false,
                     errors,
-                    reasons
+                    reasons,
+                    errorCode,
+                    statusCode = DetermineStatusCodeFromErrorCode(errorCode),
+                    timestamp = DateTimeOffset.UtcNow
                 };
+
+                // Add HTTP context if available
+                if (httpContext != null)
+                {
+                    var correlationId = httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CorrelationId, out var corrId) ? corrId?.ToString() : null;
+                    var tenantId = httpContext.Items.TryGetValue(HttpConstants.ContextKeys.TenantId, out var tenant) ? tenant?.ToString() : null;
+                    var traceId = httpContext.TraceIdentifier;
+                    var instance = httpContext.Request.Path.ToString();
+
+                    return new
+                    {
+                        enrichedResponse.isFailed,
+                        enrichedResponse.isSuccess,
+                        enrichedResponse.errors,
+                        enrichedResponse.reasons,
+                        enrichedResponse.errorCode,
+                        enrichedResponse.statusCode,
+                        enrichedResponse.timestamp,
+                        correlationId,
+                        tenantId,
+                        traceId,
+                        instance
+                    };
+                }
+
+                return enrichedResponse;
             }
 
             // Success: try to extract Value via reflection for Result<T>
@@ -220,17 +255,47 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
     /// Build a safe, serializable object for ResponseData from exceptions.
     /// Creates a structured error response that can be audited.
     /// </summary>
-    private static object BuildExceptionResponse(Exception exception)
+    private static object BuildExceptionResponse(Exception exception, HttpContext? httpContext)
     {
-        return new
+        var errorCode = ExtractErrorCode(exception);
+        var enrichedResponse = new
         {
             isFailed = true,
             isSuccess = false,
             exceptionType = exception.GetType().Name,
             message = exception.Message,
-            errorCode = ExtractErrorCode(exception),
+            errorCode,
+            statusCode = DetermineStatusCodeFromException(exception),
+            timestamp = DateTimeOffset.UtcNow,
             stackTrace = exception.StackTrace
         };
+
+        // Add HTTP context if available
+        if (httpContext != null)
+        {
+            var correlationId = httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CorrelationId, out var corrId) ? corrId?.ToString() : null;
+            var tenantId = httpContext.Items.TryGetValue(HttpConstants.ContextKeys.TenantId, out var tenant) ? tenant?.ToString() : null;
+            var traceId = httpContext.TraceIdentifier;
+            var instance = httpContext.Request.Path.ToString();
+
+            return new
+            {
+                enrichedResponse.isFailed,
+                enrichedResponse.isSuccess,
+                enrichedResponse.exceptionType,
+                enrichedResponse.message,
+                enrichedResponse.errorCode,
+                enrichedResponse.statusCode,
+                enrichedResponse.timestamp,
+                enrichedResponse.stackTrace,
+                correlationId,
+                tenantId,
+                traceId,
+                instance
+            };
+        }
+
+        return enrichedResponse;
     }
 
     /// <summary>
@@ -360,6 +425,23 @@ public sealed class AuditLoggingBehavior<TRequest, TResponse> : IPipelineBehavio
         
         // Generic exceptions don't have error codes
         return null;
+    }
+
+    /// <summary>
+    /// Determine HTTP status code from error code (same logic as ErrorCatalog)
+    /// </summary>
+    private static int DetermineStatusCodeFromErrorCode(string errorCode)
+    {
+        // Use the same logic as ErrorCatalog.GetStatusCode
+        return errorCode switch
+        {
+            "SALE_NOT_FOUND" => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.NotFound,
+            "VALIDATION_ERROR" => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.BadRequest,
+            "TENANT_NOT_FOUND" => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.NotFound,
+            "UNAUTHORIZED" => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.Unauthorized,
+            "FORBIDDEN" => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.Forbidden,
+            _ => MicroservicesBase.Core.Constants.HttpConstants.StatusCodes.InternalServerError
+        };
     }
 }
 
