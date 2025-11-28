@@ -1,0 +1,69 @@
+---
+alwaysApply: true
+---
+
+
+# MicroservicesBase - Cursor Rules
+
+---
+
+## Table of Contents
+1. [Architecture Principles](#architecture-principles)
+2. [Code Organization](#code-organization)
+3. [Error Handling & Guardrails](#error-handling--guardrails)
+4. [Multi-Tenancy Patterns](#multi-tenancy-patterns)
+5. [Resilience Patterns](#resilience-patterns)
+6. [CQRS Pattern](#cqrs-pattern)
+7. [Data Access Patterns](#data-access-patterns)
+8. [API Design](#api-design)
+9. [Logging & Observability](#logging--observability)
+10. [Security Patterns](#security-patterns)
+11. [Testing & Validation](#testing--validation)
+12. [Performance Patterns](#performance-patterns)
+13. [Code Quality Standards](#code-quality-standards)
+14. [Database Schema Patterns](#database-schema-patterns)
+15. [Migration & Deployment](#migration--deployment)
+16. [Code Review Checklist](#code-review-checklist)
+17. [Common Pitfalls](#common-pitfalls)
+18. [Quick Reference](#quick-reference)
+
+---
+
+## Architecture Principles
+
+### Clean Architecture Layers
+
+| Layer                     | Responsibilities                                                                 | Dependencies               |
+|---------------------------|-------------------------------------------------------------------------------|-----------------------------|
+| **MicroservicesBase.Core** | Pure domain: entities, contracts, exceptions, constants. **NO dependencies.** | None                        |
+| **MicroservicesBase.Infrastructure** | Persistence (Dapper), tenancy, resilience (Polly), audit logging, mapping. | Can reference Core          |
+| **MicroservicesBase.API** | Presentation: FastEndpoints, middleware, ProblemDetails, rate limiting.      | Can reference Core & Infrastructure |
+
+**Dependency Rule:**
+- Dependencies point inward: **API → Infrastructure → Core**
+- Core must remain dependency-free.
+
+---
+
+## Code Organization
+
+### Single Responsibility Principle
+- One class per file (except closely related records/exceptions).
+- Group related functionality in folders (e.g., `Queries/Sales/`).
+- Namespaces must match folder structure.
+
+### Modularity
+- Keep helpers, domain logic, and UI concerns isolated.
+- Avoid combining unrelated changes in one edit.
+
+---
+
+## Error Handling & Guardrails
+
+### Error Handling Pattern
+1. Use `ErrorCatalog` for error codes (e.g., `SALE_NOT_FOUND`).
+2. Throw custom exceptions (`AppException`, `TenantException`).
+3. Convert to `ProblemDetails` (RFC 7807) via `ProblemDetailsFactory.Create()`.
+4. Enrich errors with `correlationId`, `tenantId`, `traceId`, and `timestamp`.
+
+**Error Flow:**

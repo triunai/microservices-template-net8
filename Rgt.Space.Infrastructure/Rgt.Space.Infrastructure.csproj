@@ -1,0 +1,44 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Library</OutputType>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Folder Include="Behaviors\Helpers\" />
+		<Folder Include="Commands\" />
+		<Folder Include="Mapping\" />
+		<Folder Include="Observability\" />
+		<Folder Include="Persistence\Dac\" />
+		<Folder Include="Persistence\Models\" />
+		<Folder Include="Persistence\Sql\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Dapper" Version="2.1.66" />
+		<PackageReference Include="FluentResults" Version="4.0.0" />
+		<PackageReference Include="FluentValidation" Version="12.0.0" />
+		<PackageReference Include="MediatR" Version="13.0.0" />
+		<PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
+		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.9" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.9" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.9" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.9" />
+		<PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.9" />
+		<PackageReference Include="Npgsql" Version="10.0.0" />
+		<PackageReference Include="Riok.Mapperly" Version="4.2.1" />
+		<PackageReference Include="StackExchange.Redis" Version="2.9.25" />
+		<PackageReference Include="Polly.Core" Version="8.6.4" />
+		<PackageReference Include="Polly" Version="8.6.4" />
+		<PackageReference Include="Polly.Extensions" Version="8.6.4" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Rgt.Space.Core\Rgt.Space.Core.csproj" />
+	</ItemGroup>
+
+</Project>
