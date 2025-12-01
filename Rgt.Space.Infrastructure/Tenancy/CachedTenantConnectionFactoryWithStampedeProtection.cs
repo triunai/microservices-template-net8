@@ -33,10 +33,12 @@ namespace Rgt.Space.Infrastructure.Tenancy
 
         public async Task<string> GetSqlConnectionStringAsync(string tenantId, CancellationToken ct = default)
         {
-            // IMemoryCache.GetOrCreateAsync is thread-safe and handles concurrent access automatically
-            // No semaphore needed - built-in stampede protection ensures only ONE DB query per key
+            // In Single-DB mode, tenantId might be null/empty for global operations.
+            // We use a default cache key for the single connection string.
+            var cacheKey = string.IsNullOrEmpty(tenantId) ? "Global_PortalDb" : tenantId;
+
             return await _cache.GetOrCreateAsync(
-                tenantId, // Use tenant ID as cache key (simple and clean)
+                cacheKey,
                 async entry =>
                 {
                     // Configure cache entry

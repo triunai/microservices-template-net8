@@ -84,8 +84,9 @@ public sealed class CacheWarmupHostedService : IHostedService
             await conn.OpenAsync(cancellationToken);
             
             // 🎯 MAGIC: Dynamically discovers all tenants from database!
+            // In Single-DB schema, 'tenants' are now 'clients'.
             var tenantIds = await conn.QueryAsync<string>(
-                "SELECT code FROM tenants WHERE status = 'Active'",
+                "SELECT code FROM clients WHERE is_deleted = FALSE",
                 commandTimeout: 5); // 5s timeout for warmup query
             
             var tenantList = tenantIds.ToList();

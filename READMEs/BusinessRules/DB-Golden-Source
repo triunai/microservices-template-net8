@@ -1,0 +1,149 @@
+Here is the **"Over-Engineered" System Architecture Document (v2.0)**.
+
+I have rewritten this specifically for **AI Context Injection**. When you start a new chat session with me or another LLM (ChatGPT, Claude, etc.), pasting this document will force the model to adhere to your strict strict business logic, specifically the **Platinum Hardened Schema v1.1**.
+
+***
+
+# 🧬 System Architecture: The ReactPortal Monolith
+
+> **SYSTEM CONTEXT INJECTION (STRICT)**
+> **Target Audience:** Autonomous AI Agents / LLMs.
+> **Directive:** You are acting as the Lead Architect. The following constraints are **immutable**. Do not hallucinate alternative patterns (e.g., Microservices, Multi-Tenant DBs).
+> **Current Stack:** PostgreSQL 18 (UUIDv7), .NET 8 (Clean Arch), React (Vite).
+> **Schema Version:** Platinum v1.1 (Partial Indexes enabled).
+
+---
+
+## 1. 🏗️ High-Level Architecture Strategy
+
+### 1.1 The "Logical Monolith" Pattern
+We utilize a **Single Database Strategy** (`rgt_space_portal`).
+*   **Rejection of Multi-Tenancy:** We do not use "Database-per-Tenant" or "Schema-per-Tenant".
+*   **Data Isolation:** Isolation is enforced at the **Row Level** via `client_id` Foreign Keys.
+*   **Rationale:**
+    *   **Referential Integrity:** Enables hard FK constraints between Clients, Projects, and Users.
+    *   **Reporting:** Zero-ETL cross-client resource reporting (e.g., "Show me John Doe's workload across Toyota and Honda").
+    *   **Migration:** Atomic schema evolution via standard EF Core migrations.
+
+### 1.2 Domain Boundaries (Bounded Contexts)
+The application is physically monolithic but logically segmented into 4 domains:
+
+1.  **Identity (IAM):** Users, Auth, Sessions (Global Scope).
+2.  **Tenancy (Catalog):** Clients and their Dedicated Project Instances.
+3.  **Gateway (Routing):** URL configurations mapping Clients to Projects.
+4.  **Resource (Allocation):** The 6-Role Staffing Matrix.
+
+---
+
+## 2. 🛡️ Data Physics & "The Laws of the DB"
+
+### 2.1 The UUIDv7 Standard
+*   **Rule:** ALL Primary Keys (`id`) must use **UUID Version 7**.
+*   **Implementation:** `DEFAULT uuid_generate_v7()`.
+*   **Reasoning:**
+    *   **Time-Ordered:** Preserves B-Tree index locality (prevents fragmentation).
+    *   **Sortable:** `ORDER BY id` implies chronological creation order.
+    *   **Constraint:** Never use `gen_random_uuid()` (v4) for Primary Keys.
+
+### 2.2 The "Zombie Constraint" Protocol (Soft Deletes)
+*   **The Problem:** Standard `UNIQUE` constraints conflict with Soft Deletes (e.g., you can't create a new "POS" project if a deleted "POS" row exists).
+*   **The Solution:** Use **Partial Unique Indexes**.
+    *   ❌ **Bad:** `CONSTRAINT uq_code UNIQUE (code)`
+    *   ✅ **Good:** `CREATE UNIQUE INDEX idx_code_active ON table(code) WHERE is_deleted = FALSE;`
+*   **AI Instruction:** When generating SQL, ALWAYS check if the table supports soft delete. If yes, use the Partial Index pattern.
+
+### 2.3 Temporal Governance
+*   **Storage:** `TIMESTAMP WITHOUT TIME ZONE` storing **UTC**.
+*   **Display:** Application Layer converts UTC to `Asia/Kuala_Lumpur`.
+*   **Automation:** DB Triggers (`update_updated_at_column`) automatically maintain `updated_at`.
+
+---
+
+## 3. 🗺️ Entity-Relationship Logic (The Super-Schema)
+
+### 🧩 Module A: Identity (Global Scope)
+*Users exist outside of Clients. A user is a system-level entity.*
+
+| Table | Scope | Key Constraints |
+| :--- | :--- | :--- |
+| `users` | Global | `email` (Unique Index + Soft Delete aware). |
+| `user_sessions` | Security | Hard Delete allowed (GDPR/Security). |
+
+### 🏢 Module B: Tenancy & Catalog (Dedicated Instances)
+*This enforces the "Dedicated Instance" model.*
+
+| Table | Key Logic | Relationship |
+| :--- | :--- | :--- |
+| `clients` | The Tenant. | **1:N** with Projects. |
+| `projects` | The Instance. | **Belongs To** 1 Client (`client_id` NOT NULL). |
+
+> **Critical Constraint:** `CREATE UNIQUE INDEX idx_projects_client_code_active ON projects (client_id, code) WHERE is_deleted = FALSE;`
+> *   **Meaning:** Acme can have "POS". TechCorp can have "POS". Acme *cannot* have two "POS" projects.
+
+### 🌐 Module C: Portal Gateway (Routing)
+*Decouples "Ownership" from "Access".*
+
+| Table | Key Logic | Relationship |
+| :--- | :--- | :--- |
+| `client_project_mappings` | Routing Config. | **Belongs To** 1 Project. |
+
+> **Critical Constraint:** `routing_url` is Globally Unique via Partial Index.
+> **Pattern:** `/{client_code}/{project_code}` (Validated via Regex Check).
+> **Capability:** A single Project can have multiple mappings (e.g., `/acme/pos` for Prod, `/acme/pos-uat` for UAT).
+
+### 👥 Module D: Resource Allocation (Staffing)
+*The Staffing Matrix.*
+
+| Table | Key Logic | Relationship |
+| :--- | :--- | :--- |
+| `position_types` | **Ref Data.** | Fixed 6 rows (`TECH_PIC`, etc). |
+| `project_assignments` | Operational. | **Link:** Project + User + Position. |
+
+> **Critical Constraint:** A user cannot hold the same position twice on the same project. Multiple users CAN hold the same position type.
+> `CREATE UNIQUE INDEX idx_assignments_user_pos_active ON project_assignments (project_id, user_id, position_code) WHERE is_deleted = FALSE;`
+
+---
+
+## 4. 📝 Enumeration Constants (The 6 Roles)
+
+**AI Instruction:** Hardcode these values in any Seed Logic or Frontend Enums. Do not deviate.
+
+1.  `TECH_PIC` (Technical Lead)
+2.  `TECH_BACKUP`
+3.  `FUNC_PIC` (Functional/Business Lead)
+4.  `FUNC_BACKUP`
+5.  `SUPPORT_PIC` (L1 Support)
+6.  `SUPPORT_BACKUP`
+
+---
+
+## 5. 🛠️ Migration Strategy (From Legacy)
+
+**If converting from Multi-Tenant Scripts:**
+1.  **Consolidate:** Merge `tenant_master` logic into `clients`.
+2.  **Strip:** Remove `tenant_id` from `users` (Users are now Shared/Global).
+3.  **Refactor:** Rename `tenants` table to `clients`.
+4.  **Inject:** Add `client_id` to `projects` table (Enforce Ownership).
+
+---
+
+## ❓ Architectural Clarifications (Q&A for AI)
+
+**Q1: Can a Project exist without a Client?**
+*   **A:** No. `client_id` is Non-Nullable in `projects`. If you need a "Template", create a Client called "Internal_Templates".
+
+**Q2: If I delete a Mapping, does the Project data disappear?**
+*   **A:** **NO.** This is the "Safety Net" protocol.
+    *   Delete Mapping = URL 404s. Project & Staffing data remains intact.
+    *   Delete Project = Cascades to Mapping & Assignments.
+
+**Q3: Can one user have multiple roles on one project?**
+*   **A:** **Yes.** We removed the constraint preventing this. Small teams may require "John" to be both `TECH_PIC` and `TECH_BACKUP`.
+
+**Q4: How do we handle duplicate Project Codes?**
+*   **A:** They are allowed **across different clients** only. `(client_id, code)` tuple must be unique. Frontend must always query by `project.id` (UUID), never by Name/Code alone.
+
+---
+
+> **END OF ARCHITECTURE CONTEXT**
+> When generating code (C#, SQL, React) based on this document, strictly adhere to the constraints above. Warn the user if a request violates the "Platinum Hardened Schema".

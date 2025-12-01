@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Rgt.Space.Core.Abstractions.Identity;
 using Rgt.Space.Core.Domain.Entities.Identity;
-using Rgt.Space.Infrastructure.Services.Identity;
+using Rgt.Space.Infrastructure.Persistence.Services.Identity;
 
 namespace Rgt.Space.Tests.Unit.Services;
 
@@ -30,7 +30,7 @@ public class IdentitySyncServiceTests
         var displayName = "New User";
 
         _userReadDac.GetByExternalIdAsync(provider, externalId, Arg.Any<CancellationToken>())
-            .Returns((User?)null);
+            .Returns((Core.ReadModels.UserReadModel?)null);
 
         // Act
         await _sut.SyncUserFromSsoAsync(provider, externalId, email, displayName);
@@ -56,7 +56,25 @@ public class IdentitySyncServiceTests
 
         var existingUser = User.CreateFromSso(externalId, "old@example.com", "Old Name", provider);
 
+        var readModel = new Core.ReadModels.UserReadModel(
+            existingUser.Id,
+            existingUser.DisplayName,
+            existingUser.Email,
+            null,
+            existingUser.IsActive,
+            existingUser.LocalLoginEnabled,
+            existingUser.SsoLoginEnabled,
+            existingUser.SsoProvider,
+            existingUser.ExternalId,
+            existingUser.LastLoginAt,
+            existingUser.LastLoginProvider,
+            existingUser.CreatedAt,
+            existingUser.UpdatedAt);
+
         _userReadDac.GetByExternalIdAsync(provider, externalId, Arg.Any<CancellationToken>())
+            .Returns(readModel);
+
+        _userWriteDac.GetByIdAsync(existingUser.Id, Arg.Any<CancellationToken>())
             .Returns(existingUser);
 
         // Act
@@ -83,8 +101,23 @@ public class IdentitySyncServiceTests
         var externalId = "google_99999";
         var existingUser = User.CreateFromSso(externalId, "user@example.com", "User", provider);
 
+        var readModel = new Core.ReadModels.UserReadModel(
+            existingUser.Id,
+            existingUser.DisplayName,
+            existingUser.Email,
+            null,
+            existingUser.IsActive,
+            existingUser.LocalLoginEnabled,
+            existingUser.SsoLoginEnabled,
+            existingUser.SsoProvider,
+            existingUser.ExternalId,
+            existingUser.LastLoginAt,
+            existingUser.LastLoginProvider,
+            existingUser.CreatedAt,
+            existingUser.UpdatedAt);
+
         _userReadDac.GetByExternalIdAsync(provider, externalId, Arg.Any<CancellationToken>())
-            .Returns(existingUser);
+            .Returns(readModel);
 
         // Act
         await _sut.SyncUserFromSsoAsync(provider, externalId, "user@example.com", "User");
@@ -106,7 +139,7 @@ public class IdentitySyncServiceTests
         var email = "user@example.com";
 
         _userReadDac.GetByExternalIdAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns((User?)null);
+            .Returns((Core.ReadModels.UserReadModel?)null);
 
         // Act
         await _sut.SyncUserFromSsoAsync(provider1, externalId1, email, "User 1");

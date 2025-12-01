@@ -128,24 +128,25 @@ CREATE INDEX idx_projects_status ON projects(status) WHERE is_deleted = FALSE;
 -- Design Decision:
 --   - NO client_id column (redundant - get it via project join)
 --   - Environment field allows: Production, Staging, Development
---   - is_active allows toggling routes without deletion
+--   - status allows toggling routes without deletion (STANDARDIZED with clients/projects)
 -- =====================================================
 CREATE TABLE client_project_mappings (
     -- Identity
     id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-    
+
     -- Relationship (FIX: No redundant client_id)
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     -- ON DELETE CASCADE: If project is deleted, its routes are deleted
     -- This is safe because routes are configuration, not operational data
-    
+
     -- Routing Configuration
     routing_url VARCHAR(2048) NOT NULL,  -- e.g., "/acme/pos" (uniqueness enforced by partial index)
     environment VARCHAR(50) NOT NULL DEFAULT 'Production'
         CHECK (environment IN ('Production', 'Staging', 'Development', 'UAT')),
-    
-    -- Status (allows disabling route without deleting)
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    -- Status (STANDARDIZED with clients/projects)
+    status VARCHAR(20) NOT NULL DEFAULT 'Active'
+        CHECK (status IN ('Active', 'Inactive')),
     
     -- Audit Trail
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
@@ -172,7 +173,7 @@ CREATE UNIQUE INDEX idx_mappings_url_active
 
 -- Performance Indexes
 CREATE INDEX idx_mappings_project ON client_project_mappings(project_id) WHERE is_deleted = FALSE;
-CREATE INDEX idx_mappings_active ON client_project_mappings(is_active) WHERE is_deleted = FALSE;
+CREATE INDEX idx_mappings_status ON client_project_mappings(status) WHERE is_deleted = FALSE;
 
 -- =====================================================
 -- TABLE: position_types
@@ -191,10 +192,11 @@ CREATE TABLE position_types (
     name VARCHAR(100) NOT NULL,         -- e.g., "Technical Person-in-Charge"
     description TEXT NULL,
     sort_order INT NOT NULL UNIQUE,     -- Display order in UI (1-6)
-    
-    -- Status
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    
+
+    -- Status (STANDARDIZED with clients/projects/mappings)
+    status VARCHAR(20) NOT NULL DEFAULT 'Active'
+        CHECK (status IN ('Active', 'Inactive')),
+
     -- Audit (reference data - rarely changes)
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
     updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (now() AT TIME ZONE 'utc')
@@ -245,9 +247,10 @@ CREATE TABLE project_assignments (
 );
 
 -- 🛡️ HARDENING: Soft Delete-Aware Unique Indexes (THE "ZOMBIE CONSTRAINT" FIX)
--- Business Rule 1: One position per project (e.g., Only 1 Tech PIC per project)
-CREATE UNIQUE INDEX idx_assignments_position_active 
-    ON project_assignments(project_id, position_code) 
+-- Business Rule 1: Multiple users can hold the same position (e.g. 2 Developers),
+-- BUT the same user cannot hold the same position twice.
+CREATE UNIQUE INDEX idx_assignments_user_position_active 
+    ON project_assignments(project_id, user_id, position_code) 
     WHERE is_deleted = FALSE;
 
 -- Business Rule 2 (COMMENTED OUT FOR SMALL TEAMS):

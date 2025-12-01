@@ -178,69 +178,7 @@ CREATE TABLE user_permission_overrides (
     CONSTRAINT user_permission_overrides_uk UNIQUE (user_id, permission_id)
 );
 
--- 1.4 PORTAL ROUTING (Clients & Projects)
 
-CREATE TABLE clients (
-    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v7(),
-    name        TEXT        NOT NULL,
-    logo_url    TEXT        NULL,
-    status      TEXT        NOT NULL DEFAULT 'Active',
-    
-    created_at  TIMESTAMP   NOT NULL DEFAULT now(),
-    created_by  UUID        NULL REFERENCES users (id),
-    updated_at  TIMESTAMP   NOT NULL DEFAULT now(),
-    updated_by  UUID        NULL REFERENCES users (id),
-    is_deleted  BOOLEAN     NOT NULL DEFAULT FALSE
-);
-
-CREATE TABLE projects (
-    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v7(),
-    name        TEXT        NOT NULL,
-    status      TEXT        NOT NULL DEFAULT 'Active',
-    
-    created_at  TIMESTAMP   NOT NULL DEFAULT now(),
-    created_by  UUID        NULL REFERENCES users (id),
-    updated_at  TIMESTAMP   NOT NULL DEFAULT now(),
-    updated_by  UUID        NULL REFERENCES users (id),
-    is_deleted  BOOLEAN     NOT NULL DEFAULT FALSE
-);
-
-CREATE TABLE client_project_mappings (
-    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v7(),
-    client_id   UUID        NOT NULL REFERENCES clients (id),
-    project_id  UUID        NOT NULL REFERENCES projects (id),
-    portal_url  TEXT        NOT NULL,
-    status      TEXT        NOT NULL DEFAULT 'Active',
-    
-    created_at  TIMESTAMP   NOT NULL DEFAULT now(),
-    created_by  UUID        NULL REFERENCES users (id),
-    updated_at  TIMESTAMP   NOT NULL DEFAULT now(),
-    updated_by  UUID        NULL REFERENCES users (id),
-    is_deleted  BOOLEAN     NOT NULL DEFAULT FALSE,
-
-    CONSTRAINT client_project_mappings_uk UNIQUE (client_id, project_id)
-);
-
--- 1.5 TASK ALLOCATION
-
-CREATE TABLE position_types (
-    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v7(),
-    name        TEXT        NOT NULL,
-    code        TEXT        NOT NULL UNIQUE,
-    sort_order  INT         NOT NULL DEFAULT 0
-);
-
-CREATE TABLE project_assignments (
-    id               UUID        PRIMARY KEY DEFAULT uuid_generate_v7(),
-    project_id       UUID        NOT NULL REFERENCES projects (id),
-    user_id          UUID        NOT NULL REFERENCES users (id),
-    position_type_id UUID        NOT NULL REFERENCES position_types (id),
-    
-    assigned_at      TIMESTAMP   NOT NULL DEFAULT now(),
-    assigned_by      UUID        NULL REFERENCES users (id),
-
-    CONSTRAINT project_assignments_uk UNIQUE (project_id, user_id, position_type_id)
-);
 
 -- 1.6 AUDIT LOG (Local)
 

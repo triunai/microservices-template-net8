@@ -2,12 +2,11 @@ using Rgt.Space.Core.Domain.Primitives;
 
 namespace Rgt.Space.Core.Domain.Entities.Identity;
 
-public sealed class UserSession : Entity
+public sealed class UserSession : AuditableEntity
 {
     public Guid UserId { get; private set; }
     public string RefreshToken { get; private set; } = string.Empty;
     public DateTime ExpiresAt { get; private set; }
-    public DateTime CreatedAt { get; private set; }
     public string? CreatedIp { get; private set; }
     public string? DeviceInfo { get; private set; }
     public bool IsRevoked { get; private set; }
@@ -40,5 +39,6 @@ public sealed class UserSession : Entity
         IsRevoked = true;
         RevokedAt = DateTime.UtcNow;
         ReplacedBy = replacedByToken;
+        UpdatedAt = DateTime.UtcNow; // Update base audit
     }
 }

@@ -265,39 +265,32 @@ public sealed class AuditLogger : IAuditLogger, IHostedService
         {
             await pipeline.ExecuteAsync(async token =>
             {
-                // Get tenant connection string (same way we do for data access)
-                var masterConnectionString = _configuration.GetConnectionString("TenantMaster")!;
+                // SINGLE DATABASE ARCHITECTURE: All audit logs write to PortalDb
+                // This is a logical monolith - we use row-level isolation (client_id),
+                // NOT database-per-tenant. TenantMaster is legacy and should not be used.
+                var connectionString = _configuration.GetConnectionString("PortalDb");
                 
-                string? tenantConnectionString;
-                await using (var masterConn = new NpgsqlConnection(masterConnectionString))
+                if (string.IsNullOrEmpty(connectionString))
                 {
-                    await masterConn.OpenAsync(token);
-                    tenantConnectionString = await masterConn.QueryFirstOrDefaultAsync<string>(
-                        SqlConstants.Queries.GetTenantConnectionString, 
-                        new { tenant_code = tenantId });
-                }
-
-                if (string.IsNullOrEmpty(tenantConnectionString))
-                {
-                    _logger.LogWarning("Tenant {TenantId} not found or inactive. Cannot write audit logs.", tenantId);
+                    _logger.LogWarning("PortalDb connection string not configured. Cannot write audit logs.");
                     return;
                 }
 
                 // Bulk insert audit entries with CommandTimeout alignment
-                await using var tenantConn = new NpgsqlConnection(tenantConnectionString);
-                await tenantConn.OpenAsync(token);
+                await using var conn = new NpgsqlConnection(connectionString);
+                await conn.OpenAsync(token);
 
                 //todo: make reusable stored proc ###
                 const string insertSql = @"
                     INSERT INTO audit_log (
-                        tenant_id, user_id, client_id, ip_address, user_agent,
+                        user_id, client_id, ip_address, user_agent,
                         action, entity_type, entity_id,
                         timestamp, correlation_id, request_path,
                         is_success, status_code, error_code, error_message, duration_ms,
                         request_data, response_data, delta,
                         idempotency_key, source, request_hash
                     ) VALUES (
-                        @TenantId, @UserId, @ClientId, @IpAddress, @UserAgent,
+                        @UserId, @ClientId, @IpAddress, @UserAgent,
                         @Action, @EntityType, @EntityId,
                         @Timestamp, @CorrelationId, @RequestPath,
                         @IsSuccess, @StatusCode, @ErrorCode, @ErrorMessage, @DurationMs,
@@ -306,7 +299,7 @@ public sealed class AuditLogger : IAuditLogger, IHostedService
                     )";
 
                 // Use CommandTimeout of 3.5s (less than Polly's 4s timeout)
-                    await tenantConn.ExecuteAsync(insertSql, entries, commandTimeout: SqlConstants.CommandTimeouts.AuditDb);
+                    await conn.ExecuteAsync(insertSql, entries, commandTimeout: SqlConstants.CommandTimeouts.AuditDb);
                 
                 _logger.LogDebug("Successfully wrote {Count} audit entries for tenant {TenantId}", entries.Count, tenantId);
             }, ct);

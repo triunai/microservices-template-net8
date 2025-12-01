@@ -145,7 +145,7 @@ INSERT INTO position_types (code, name, sort_order) VALUES
 
 | Rule | Constraint | Rationale |
 |------|-----------|-----------|
-| One position per project | `UNIQUE (project_id, position_code)` | Business logic |
+| Multiple users can hold same position | `UNIQUE (project_id, user_id, position_code)` | Prevents duplicate assignment for same user |
 | Position must exist | `FK to position_types` | Prevents typos |
 | User must exist | `FK to users` | Data integrity |
 | Cannot delete user with assignments | `ON DELETE RESTRICT` | Protects operational data |
@@ -160,7 +160,11 @@ INSERT INTO project_assignments (project_id, user_id, position_code) VALUES
 
 -- ❌ BLOCKED
 INSERT INTO project_assignments (project_id, user_id, position_code) VALUES 
-  ('proj1', 'bob_id', 'TECH_PIC');  -- Position already assigned (UNIQUE violation)
+  ('proj1', 'john_id', 'TECH_PIC');  -- Same user, same position (UNIQUE violation)
+  
+-- ✅ ALLOWED (Multiple users can hold same position)
+INSERT INTO project_assignments (project_id, user_id, position_code) VALUES 
+  ('proj1', 'bob_id', 'TECH_PIC');  -- Different user, same position (allowed)
   
 INSERT INTO project_assignments (project_id, user_id, position_code) VALUES 
   ('proj2', 'alice_id', 'TECH_PICS');  -- Typo in position (FK violation)

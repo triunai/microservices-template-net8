@@ -2,7 +2,7 @@ using Rgt.Space.Core.Domain.Primitives;
 
 namespace Rgt.Space.Core.Domain.Entities.Identity;
 
-public sealed class User : Entity
+public sealed class User : AuditableEntity
 {
     public string DisplayName { get; private set; } = string.Empty;
     public string Email { get; private set; } = string.Empty;
@@ -13,6 +13,9 @@ public sealed class User : Entity
     public bool LocalLoginEnabled { get; private set; }
     public byte[]? PasswordHash { get; private set; }
     public byte[]? PasswordSalt { get; private set; }
+    public DateTime? PasswordExpiryAt { get; private set; }
+    public string? PasswordResetToken { get; private set; }
+    public DateTime? PasswordResetExpiresAt { get; private set; }
     
     // SSO Auth
     public bool SsoLoginEnabled { get; private set; }
@@ -21,12 +24,6 @@ public sealed class User : Entity
     public string? SsoEmail { get; private set; }
     public DateTime? LastLoginAt { get; private set; }
     public string? LastLoginProvider { get; private set; }
-
-    // Audit
-    public DateTime CreatedAt { get; private set; }
-    public Guid? CreatedBy { get; private set; }
-    public DateTime UpdatedAt { get; private set; }
-    public Guid? UpdatedBy { get; private set; }
 
     private User(Guid id) : base(id) { }
 
@@ -39,9 +36,7 @@ public sealed class User : Entity
         string displayName, 
         string provider)
     {
-        return new User(Guid.NewGuid()) // ID will be replaced by DB default (UUID v7) or we generate here? 
-                                        // Better to let DB generate or generate v7 here. 
-                                        // For now, Guid.NewGuid() is fine as placeholder if we use v7 generator in infra.
+        return new User(Guid.NewGuid())
         {
             ExternalId = externalId,
             Email = email,
@@ -68,6 +63,9 @@ public sealed class User : Entity
         bool localLoginEnabled,
         byte[]? passwordHash,
         byte[]? passwordSalt,
+        DateTime? passwordExpiryAt,
+        string? passwordResetToken,
+        DateTime? passwordResetExpiresAt,
         bool ssoLoginEnabled,
         string? ssoProvider,
         string? externalId,
@@ -77,7 +75,10 @@ public sealed class User : Entity
         DateTime createdAt,
         Guid? createdBy,
         DateTime updatedAt,
-        Guid? updatedBy)
+        Guid? updatedBy,
+        bool isDeleted,
+        DateTime? deletedAt,
+        Guid? deletedBy)
     {
         return new User(id)
         {
@@ -88,6 +89,9 @@ public sealed class User : Entity
             LocalLoginEnabled = localLoginEnabled,
             PasswordHash = passwordHash,
             PasswordSalt = passwordSalt,
+            PasswordExpiryAt = passwordExpiryAt,
+            PasswordResetToken = passwordResetToken,
+            PasswordResetExpiresAt = passwordResetExpiresAt,
             SsoLoginEnabled = ssoLoginEnabled,
             SsoProvider = ssoProvider,
             ExternalId = externalId,
@@ -97,7 +101,10 @@ public sealed class User : Entity
             CreatedAt = createdAt,
             CreatedBy = createdBy,
             UpdatedAt = updatedAt,
-            UpdatedBy = updatedBy
+            UpdatedBy = updatedBy,
+            IsDeleted = isDeleted,
+            DeletedAt = deletedAt,
+            DeletedBy = deletedBy
         };
     }
 

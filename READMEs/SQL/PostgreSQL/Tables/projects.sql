@@ -1,17 +1,16 @@
+
 -- =====================================================
 -- TABLE: projects
--- =====================================================
 -- Purpose: Represents projects/applications owned by clients
 -- Business Rules:
 --   - MUST belong to a client (NO orphans allowed)
---   - Code must be unique WITHIN the client (enforced by partial index)
+--   - Code must be unique WITHIN the client (enforced by constraint)
 --   - External URL is the actual application URL (not routing)
 --   - Deleting a client is BLOCKED if it has projects
 -- Design Decision: 
 --   - client_id NOT NULL prevents orphan data
 --   - If you need templates, create a separate project_templates table
 -- =====================================================
-
 CREATE TABLE projects (
     -- Identity
     id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
@@ -54,7 +53,3 @@ CREATE UNIQUE INDEX idx_projects_client_code_active
 -- Performance Indexes
 CREATE INDEX idx_projects_client ON projects(client_id) WHERE is_deleted = FALSE;
 CREATE INDEX idx_projects_status ON projects(status) WHERE is_deleted = FALSE;
-
--- Documentation
-COMMENT ON TABLE projects IS 
-'Projects/Applications owned by clients. Code must be unique within client scope.';

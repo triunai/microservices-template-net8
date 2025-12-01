@@ -3,15 +3,21 @@ using Rgt.Space.Core.Constants;
 using Rgt.Space.Infrastructure.Tenancy;
 using Microsoft.AspNetCore.Http;
 using Serilog.Context;
+using System.Security.Claims;
 
 namespace Rgt.Space.API.Middleware
 {
     /// <summary>
     /// Middleware that resolves the tenant context for the current request.
-    /// Extracts tenant from X-Tenant header and:
-    /// 1. Sets it in the ITenantProvider (for database connection resolution)
-    /// 2. Stores it in HttpContext.Items (for access by other middleware)
-    /// 3. Pushes it to Serilog's LogContext (for log enrichment)
+    /// Priority order for tenant resolution:
+    /// 1. JWT "tid" claim (most secure - from authenticated token)
+    /// 2. X-Tenant header (fallback for non-authenticated endpoints)
+    /// 3. Query parameter "tenantId" (fallback for webhooks/callbacks)
+    /// 
+    /// Responsibilities:
+    /// 1. Sets tenant in ITenantProvider (for database connection resolution)
+    /// 2. Stores tenant in HttpContext.Items (for access by other middleware)
+    /// 3. Pushes tenant to Serilog's LogContext (for log enrichment)
     /// </summary>
     public class TenantResolutionMiddleware
     {
@@ -27,27 +33,72 @@ namespace Rgt.Space.API.Middleware
 
         public async Task InvokeAsync(HttpContext context, ITenantProvider tenantProvider)
         {
-            var tenantId = context.Request.Headers[HttpConstants.Headers.Tenant].FirstOrDefault();
+            string? tenantCode = null;
+            string? source = null;
 
-            if (!string.IsNullOrWhiteSpace(tenantId))
+            // Priority 1: JWT "tid" claim (from SSO Broker or API-issued tokens)
+            if (context.User?.Identity?.IsAuthenticated == true)
+            {
+                tenantCode = context.User.FindFirst("tid")?.Value;
+                if (!string.IsNullOrWhiteSpace(tenantCode))
+                {
+                    source = "JWT-tid-claim";
+                    _logger.LogDebug("Tenant resolved from JWT tid claim: {TenantCode}", tenantCode);
+                }
+            }
+
+            // Priority 2: X-Tenant header (fallback for non-authenticated requests)
+            if (string.IsNullOrWhiteSpace(tenantCode))
+            {
+                tenantCode = context.Request.Headers[HttpConstants.Headers.Tenant].FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(tenantCode))
+                {
+                    source = "X-Tenant-header";
+                    _logger.LogDebug("Tenant resolved from X-Tenant header: {TenantCode}", tenantCode);
+                }
+            }
+
+            // Priority 3: Query parameter (fallback for webhooks/callbacks)
+            if (string.IsNullOrWhiteSpace(tenantCode))
+            {
+                tenantCode = context.Request.Query["tenantId"].FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(tenantCode))
+                {
+                    source = "query-parameter";
+                    _logger.LogDebug("Tenant resolved from query parameter: {TenantCode}", tenantCode);
+                }
+            }
+
+            // Handle tenant resolution result
+            if (!string.IsNullOrWhiteSpace(tenantCode))
             {
                 // Set tenant in provider (for database access)
                 if (tenantProvider is HeaderTenantProvider concrete)
                 {
-                    concrete.SetTenant(tenantId);
+                    concrete.SetTenant(tenantCode);
                 }
 
                 // Store in HttpContext.Items for access by other middleware/endpoints
-                context.Items[HttpConstants.ContextKeys.TenantId] = tenantId;
+                context.Items[HttpConstants.ContextKeys.TenantId] = tenantCode;
 
-                _logger.LogInformation("Tenant resolved: {TenantId}", tenantId);
+                _logger.LogInformation("Tenant resolved: {TenantCode} (source: {Source})", tenantCode, source);
             }
             else
             {
-                // No tenant header provided - log warning and continue
+                // No tenant found in any source
                 context.Items[HttpConstants.ContextKeys.TenantId] = UnknownTenant;
-                _logger.LogWarning("No {HeaderName} header provided in request to {Path}", 
-                    HttpConstants.Headers.Tenant, context.Request.Path);
+                
+                // Only log warning for authenticated requests (they should have tid claim)
+                if (context.User?.Identity?.IsAuthenticated == true)
+                {
+                    _logger.LogWarning("Authenticated request to {Path} has no tenant context (no tid claim, X-Tenant header, or tenantId query param)", 
+                        context.Request.Path);
+                }
+                else
+                {
+                    _logger.LogDebug("Unauthenticated request to {Path} has no tenant context", 
+                        context.Request.Path);
+                }
             }
 
             // Push to Serilog's LogContext and continue pipeline

@@ -11,13 +11,14 @@ INSERT INTO actions (id, name, code) VALUES
 ON CONFLICT (code) DO NOTHING;
 
 -- 2.2 POSITION TYPES
-INSERT INTO position_types (id, name, code, sort_order) VALUES
-    (uuid_generate_v7(), 'Technical PIC', 'TECH_PIC', 1),
-    (uuid_generate_v7(), 'Technical Back-Up', 'TECH_BACKUP', 2),
-    (uuid_generate_v7(), 'Functional PIC', 'FUNC_PIC', 3),
-    (uuid_generate_v7(), 'Functional Back-Up', 'FUNC_BACKUP', 4),
-    (uuid_generate_v7(), 'Support PIC', 'SUPPORT_PIC', 5),
-    (uuid_generate_v7(), 'Support Back-Up', 'SUPPORT_BACKUP', 6)
+-- 2.2 POSITION TYPES
+INSERT INTO position_types (name, code, sort_order) VALUES
+    ('Technical PIC', 'TECH_PIC', 1),
+    ('Technical Back-Up', 'TECH_BACKUP', 2),
+    ('Functional PIC', 'FUNC_PIC', 3),
+    ('Functional Back-Up', 'FUNC_BACKUP', 4),
+    ('Support PIC', 'SUPPORT_PIC', 5),
+    ('Support Back-Up', 'SUPPORT_BACKUP', 6)
 ON CONFLICT (code) DO NOTHING;
 
 -- 2.3 MODULES & RESOURCES (Based on Frontend)

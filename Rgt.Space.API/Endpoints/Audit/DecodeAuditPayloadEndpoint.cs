@@ -1,6 +1,6 @@
 ﻿using FastEndpoints;
 using Rgt.Space.Core.Domain.Contracts.Audit;
-using Rgt.Space.Infrastructure.Services.Audit;
+using Rgt.Space.Infrastructure.Persistence.Services.Audit;
 
 namespace Rgt.Space.API.Endpoints.Audit;
 

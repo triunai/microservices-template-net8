@@ -1,10 +1,11 @@
-using Rgt.Space.Core.Domain.Entities.Identity;
+using Rgt.Space.Core.ReadModels;
 
 namespace Rgt.Space.Core.Abstractions.Identity;
 
 public interface IUserReadDac
 {
-    Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default);
-    Task<User?> GetByEmailAsync(string email, CancellationToken ct = default);
-    Task<User?> GetByExternalIdAsync(string provider, string externalId, CancellationToken ct = default);
+    Task<UserReadModel?> GetByIdAsync(Guid userId, CancellationToken ct);
+    Task<UserReadModel?> GetByEmailAsync(string email, CancellationToken ct);
+    Task<UserReadModel?> GetByExternalIdAsync(string provider, string externalId, CancellationToken ct);
+    Task<IReadOnlyList<UserReadModel>> GetAllAsync(CancellationToken ct);
 }

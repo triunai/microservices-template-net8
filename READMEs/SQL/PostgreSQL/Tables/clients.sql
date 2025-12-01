@@ -1,17 +1,12 @@
+
 -- =====================================================
 -- TABLE: clients
--- =====================================================
 -- Purpose: Represents client organizations
 -- Business Rules:
 --   - Code must be globally unique (for URL prefixing)
 --   - Name can duplicate (different divisions of same company)
 --   - Status controls visibility in UI
--- Design Principles:
---   - Soft delete-aware uniqueness (partial index)
---   - UTC timestamps (no DST issues)
---   - Auto-update trigger for updated_at
 -- =====================================================
-
 CREATE TABLE clients (
     -- Identity
     id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
@@ -40,7 +35,3 @@ CREATE UNIQUE INDEX idx_clients_code_active ON clients(code) WHERE is_deleted = 
 
 -- Performance Indexes
 CREATE INDEX idx_clients_status ON clients(status) WHERE is_deleted = FALSE;
-
--- Documentation
-COMMENT ON TABLE clients IS 
-'Client organizations. Each client can have multiple projects.';

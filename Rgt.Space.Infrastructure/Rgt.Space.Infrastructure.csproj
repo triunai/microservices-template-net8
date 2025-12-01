@@ -12,7 +12,6 @@
 		<Folder Include="Commands\" />
 		<Folder Include="Mapping\" />
 		<Folder Include="Observability\" />
-		<Folder Include="Persistence\Dac\" />
 		<Folder Include="Persistence\Models\" />
 		<Folder Include="Persistence\Sql\" />
 	</ItemGroup>

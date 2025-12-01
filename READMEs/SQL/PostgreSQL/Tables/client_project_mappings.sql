@@ -1,6 +1,6 @@
+
 -- =====================================================
 -- TABLE: client_project_mappings
--- =====================================================
 -- Purpose: Portal routing configuration (Gateway layer)
 -- Business Rules:
 --   - ONE project can have MULTIPLE routing URLs (multi-env support)
@@ -11,25 +11,25 @@
 -- Design Decision:
 --   - NO client_id column (redundant - get it via project join)
 --   - Environment field allows: Production, Staging, Development
---   - is_active allows toggling routes without deletion
+--   - status allows toggling routes without deletion (STANDARDIZED with clients/projects)
 -- =====================================================
-
 CREATE TABLE client_project_mappings (
     -- Identity
     id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-    
+
     -- Relationship (FIX: No redundant client_id)
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     -- ON DELETE CASCADE: If project is deleted, its routes are deleted
     -- This is safe because routes are configuration, not operational data
-    
+
     -- Routing Configuration
     routing_url VARCHAR(2048) NOT NULL,  -- e.g., "/acme/pos" (uniqueness enforced by partial index)
     environment VARCHAR(50) NOT NULL DEFAULT 'Production'
         CHECK (environment IN ('Production', 'Staging', 'Development', 'UAT')),
-    
-    -- Status (allows disabling route without deleting)
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    -- Status (STANDARDIZED with clients/projects)
+    status VARCHAR(20) NOT NULL DEFAULT 'Active'
+        CHECK (status IN ('Active', 'Inactive')),
     
     -- Audit Trail
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
@@ -56,8 +56,4 @@ CREATE UNIQUE INDEX idx_mappings_url_active
 
 -- Performance Indexes
 CREATE INDEX idx_mappings_project ON client_project_mappings(project_id) WHERE is_deleted = FALSE;
-CREATE INDEX idx_mappings_active ON client_project_mappings(is_active) WHERE is_deleted = FALSE;
-
--- Documentation
-COMMENT ON TABLE client_project_mappings IS 
-'Portal routing configuration. Allows multiple URLs per project for different environments.';
+CREATE INDEX idx_mappings_status ON client_project_mappings(status) WHERE is_deleted = FALSE;

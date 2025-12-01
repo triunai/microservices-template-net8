@@ -84,10 +84,11 @@ public class UserTests
         // Act
         var user = User.Rehydrate(
             id, displayName, email, contactNumber, isActive,
-            localLoginEnabled, null, null,
+            localLoginEnabled, null, null, null, null, null, // Password fields
             ssoLoginEnabled, ssoProvider, externalId, ssoEmail,
             lastLoginAt, lastLoginProvider,
-            createdAt, createdBy, updatedAt, updatedBy);
+            createdAt, createdBy, updatedAt, updatedBy,
+            false, null, null); // Deleted fields
 
         // Assert
         user.Id.Should().Be(id);

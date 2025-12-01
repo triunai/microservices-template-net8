@@ -36,6 +36,11 @@
         public const string PAYMENT_DECLINED = "PAYMENT_DECLINED";
         public const string PAYMENT_INVALID_AMOUNT = "PAYMENT_INVALID_AMOUNT";
         
+        // ===== Portal Routing Errors =====
+        public const string ROUTING_URL_ALREADY_EXISTS = "ROUTING_URL_ALREADY_EXISTS";
+        public const string PROJECT_NOT_FOUND = "PROJECT_NOT_FOUND";
+        public const string INVALID_POSITION_CODE = "INVALID_POSITION_CODE";
+        
         /// <summary>
         /// Determines if an error code represents a validation error.
         /// Validation errors return 400 Bad Request.
@@ -56,7 +61,8 @@
                 errorCode.EndsWith("_REQUIRED") ||
                 errorCode.EndsWith("_FORMAT_INVALID") ||
                 errorCode.EndsWith("_TOO_LONG") ||
-                errorCode.EndsWith("_TOO_SHORT"))
+                errorCode.EndsWith("_TOO_SHORT") ||
+                errorCode.EndsWith("_CODE")) // Catches INVALID_POSITION_CODE
                 return true;
             
             // Layer 3: SAFETY NET - Catch FluentValidation default error codes
@@ -114,6 +120,10 @@
                 // 422 Unprocessable Entity
                 ITEM_INSUFFICIENT_STOCK => 422,
                 
+                // Portal Routing
+                ROUTING_URL_ALREADY_EXISTS => 409,
+                PROJECT_NOT_FOUND => 404,
+
                 // 500 Internal Server Error (default)
                 _ => 500
             };
@@ -156,6 +166,10 @@
                 PAYMENT_FAILED => "Payment Failed",
                 PAYMENT_DECLINED => "Payment Declined",
                 
+                // Portal Routing
+                ROUTING_URL_ALREADY_EXISTS => "Routing URL Already Exists",
+                PROJECT_NOT_FOUND => "Project Not Found",
+
                 _ => "An Error Occurred"
             };
         }

@@ -1,6 +1,6 @@
+
 -- =====================================================
 -- TABLE: project_assignments
--- =====================================================
 -- Purpose: Task allocation (6 positions per project)
 -- Business Rules:
 --   - Each position can only be assigned ONCE per project
@@ -12,7 +12,6 @@
 --   - Assignments are operational data → protect via RESTRICT on user deletion
 --   - Assignments are project-scoped → cascade delete on project deletion
 -- =====================================================
-
 CREATE TABLE project_assignments (
     -- Identity
     id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
@@ -41,9 +40,10 @@ CREATE TABLE project_assignments (
 );
 
 -- 🛡️ HARDENING: Soft Delete-Aware Unique Indexes (THE "ZOMBIE CONSTRAINT" FIX)
--- Business Rule 1: One position per project (e.g., Only 1 Tech PIC per project)
-CREATE UNIQUE INDEX idx_assignments_position_active 
-    ON project_assignments(project_id, position_code) 
+-- Business Rule 1: Multiple users can hold the same position (e.g. 2 Developers),
+-- BUT the same user cannot hold the same position twice.
+CREATE UNIQUE INDEX idx_assignments_user_position_active 
+    ON project_assignments(project_id, user_id, position_code) 
     WHERE is_deleted = FALSE;
 
 -- Business Rule 2 (COMMENTED OUT FOR SMALL TEAMS):

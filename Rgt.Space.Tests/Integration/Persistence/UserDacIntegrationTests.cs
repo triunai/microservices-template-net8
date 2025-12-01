@@ -1,6 +1,14 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using NSubstitute;
+using Polly;
+using Polly.Registry;
 using Rgt.Space.Core.Abstractions.Tenancy;
+using Rgt.Space.Core.Configuration;
 using Rgt.Space.Core.Domain.Entities.Identity;
-using Rgt.Space.Infrastructure.Persistence.Identity;
+using Rgt.Space.Infrastructure.Persistence;
+using Rgt.Space.Infrastructure.Persistence.Dac.Identity;
+using Rgt.Space.Infrastructure.Resilience;
 using Testcontainers.PostgreSql;
 
 namespace Rgt.Space.Tests.Integration.Persistence;
@@ -92,14 +100,24 @@ public class UserDacIntegrationTests : IAsyncLifetime
     {
         // Arrange
         var connFactory = new TestConnectionFactory(_connectionString);
+        var tenantProvider = Substitute.For<ITenantProvider>();
+        tenantProvider.Id.Returns("test_tenant");
+        
+        // We can pass null/default for resilience and logger if the DAC allows it, or mocks.
+        // Since we are testing integration with DB, we need to satisfy the ctor.
+        // Assuming UserReadDac uses standard DI.
+        var registry = new ResiliencePipelineRegistry<string>();
+        var options = Options.Create(new ResilienceSettings());
+        var logger = Substitute.For<ILogger<UserReadDac>>();
+
         var writeDac = new UserWriteDac(connFactory);
-        var readDac = new UserReadDac(connFactory);
+        var readDac = new UserReadDac(connFactory, tenantProvider, registry, options, logger);
 
         var user = User.CreateFromSso("google_12345", "test@example.com", "Test User", "google");
 
         // Act
-        var createdId = await writeDac.CreateAsync(user);
-        var retrievedUser = await readDac.GetByIdAsync(createdId);
+        var createdId = await writeDac.CreateAsync(user, CancellationToken.None);
+        var retrievedUser = await readDac.GetByIdAsync(createdId, CancellationToken.None);
 
         // Assert
         retrievedUser.Should().NotBeNull();
@@ -114,14 +132,20 @@ public class UserDacIntegrationTests : IAsyncLifetime
     {
         // Arrange
         var connFactory = new TestConnectionFactory(_connectionString);
+        var tenantProvider = Substitute.For<ITenantProvider>();
+        tenantProvider.Id.Returns("test_tenant");
+        var registry = new ResiliencePipelineRegistry<string>();
+        var options = Options.Create(new ResilienceSettings());
+        var logger = Substitute.For<ILogger<UserReadDac>>();
+
         var writeDac = new UserWriteDac(connFactory);
-        var readDac = new UserReadDac(connFactory);
+        var readDac = new UserReadDac(connFactory, tenantProvider, registry, options, logger);
 
         var user = User.CreateFromSso("azure_67890", "user@example.com", "Azure User", "azuread");
-        await writeDac.CreateAsync(user);
+        await writeDac.CreateAsync(user, CancellationToken.None);
 
         // Act
-        var retrievedUser = await readDac.GetByExternalIdAsync("azuread", "azure_67890");
+        var retrievedUser = await readDac.GetByExternalIdAsync("azuread", "azure_67890", CancellationToken.None);
 
         // Assert
         retrievedUser.Should().NotBeNull();
@@ -134,15 +158,21 @@ public class UserDacIntegrationTests : IAsyncLifetime
     {
         // Arrange
         var connFactory = new TestConnectionFactory(_connectionString);
+        var tenantProvider = Substitute.For<ITenantProvider>();
+        tenantProvider.Id.Returns("test_tenant");
+        var registry = new ResiliencePipelineRegistry<string>();
+        var options = Options.Create(new ResilienceSettings());
+        var logger = Substitute.For<ILogger<UserReadDac>>();
+
         var writeDac = new UserWriteDac(connFactory);
-        var readDac = new UserReadDac(connFactory);
+        var readDac = new UserReadDac(connFactory, tenantProvider, registry, options, logger);
 
         var user = User.CreateFromSso("ext_123", "update@example.com", "Update Test", "google");
-        var userId = await writeDac.CreateAsync(user);
+        var userId = await writeDac.CreateAsync(user, CancellationToken.None);
 
         // Act
-        await writeDac.UpdateLastLoginAsync(userId, "google");
-        var retrievedUser = await readDac.GetByIdAsync(userId);
+        await writeDac.UpdateLastLoginAsync(userId, "google", CancellationToken.None);
+        var retrievedUser = await readDac.GetByIdAsync(userId, CancellationToken.None);
 
         // Assert
         retrievedUser!.LastLoginAt.Should().NotBeNull();

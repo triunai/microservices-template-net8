@@ -4,11 +4,9 @@ using Rgt.Space.Core.Abstractions.Tenancy;
 using Rgt.Space.Core.Configuration;
 using Rgt.Space.Infrastructure.Auditing;
 using Rgt.Space.Infrastructure.Behaviors;
-using Rgt.Space.Infrastructure.Persistence;
 using Rgt.Space.Infrastructure.Queries.Sales;
 using Rgt.Space.Infrastructure.Resilience;
 using Rgt.Space.Infrastructure.Tenancy;
-using Rgt.Space.Infrastructure.Services.Audit;
 using Rgt.Space.Infrastructure.Mapping.Audit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -24,6 +22,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Rgt.Space.Infrastructure.Persistence.Services.Audit;
+using Rgt.Space.Infrastructure.Persistence.Services.Identity;
+using Rgt.Space.Infrastructure.Persistence.Dac.Identity;
+using Rgt.Space.Infrastructure.Persistence.Dac;
 
 namespace Rgt.Space.Infrastructure
 {
@@ -38,13 +40,13 @@ namespace Rgt.Space.Infrastructure
             // ==============================
             // Polly v8 Resilience Pipelines (PLAN ALIGNED)
             // ==============================
-            
+
             // Register static pipelines at startup
             services.AddResiliencePipeline(ResiliencePolicies.MasterDbKey, (builder, context) =>
             {
                 var settings = context.ServiceProvider.GetRequiredService<IOptions<ResilienceSettings>>().Value.MasterDb;
                 var logger = context.ServiceProvider.GetRequiredService<ILogger<MasterTenantConnectionFactory>>();
-                
+
                 builder.AddPipelineFromSettings(
                     settings,
                     ResiliencePolicies.IsSqlTransientError,
@@ -52,11 +54,24 @@ namespace Rgt.Space.Infrastructure
                     logger);
             });
 
+            // Register PortalDb pipeline (single-database for Portal Routing)
+            services.AddResiliencePipeline("PortalDb", (builder, context) =>
+            {
+                var settings = context.ServiceProvider.GetRequiredService<IOptions<ResilienceSettings>>().Value.TenantDb;
+                var logger = context.ServiceProvider.GetRequiredService<ILogger<Persistence.Dac.PortalRouting.ClientProjectMappingWriteDac>>();
+
+                builder.AddPipelineFromSettings(
+                    settings,
+                    ResiliencePolicies.IsSqlTransientError,
+                    "PortalDb",
+                    logger);
+            });
+
             services.AddResiliencePipeline(ResiliencePolicies.RedisKey, (builder, context) =>
             {
                 var settings = context.ServiceProvider.GetRequiredService<IOptions<ResilienceSettings>>().Value.Redis;
                 var logger = context.ServiceProvider.GetRequiredService<ILogger<CachedTenantConnectionFactoryWithStampedeProtection>>();
-                
+
                 builder.AddPipelineFromSettings(
                     settings,
                     ResiliencePolicies.IsRedisTransientError,
@@ -118,24 +133,34 @@ namespace Rgt.Space.Infrastructure
             services.AddScoped<ITenantProvider, HeaderTenantProvider>();
 
             // Register Identity DACs
-            services.AddScoped<Core.Abstractions.Identity.IUserReadDac, Persistence.Identity.UserReadDac>();
-            services.AddScoped<Core.Abstractions.Identity.IUserWriteDac, Persistence.Identity.UserWriteDac>();
+            services.AddScoped<Core.Abstractions.Identity.IUserReadDac, UserReadDac>();
+            services.AddScoped<Core.Abstractions.Identity.IUserWriteDac, UserWriteDac>();
             
             // Register Identity Services
-            services.AddScoped<Core.Abstractions.Identity.IIdentitySyncService, Services.Identity.IdentitySyncService>();
+            services.AddScoped<Core.Abstractions.Identity.IIdentitySyncService, IdentitySyncService>();
+            
+            // Register Portal Routing DACs
+            services.AddScoped<Core.Abstractions.PortalRouting.IClientReadDac, Persistence.Dac.PortalRouting.ClientReadDac>();
+            services.AddScoped<Core.Abstractions.PortalRouting.IProjectReadDac, Persistence.Dac.PortalRouting.ProjectReadDac>();
+            services.AddScoped<Core.Abstractions.PortalRouting.IClientProjectMappingReadDac, Persistence.Dac.PortalRouting.ClientProjectMappingReadDac>();
+            services.AddScoped<Core.Abstractions.PortalRouting.IClientProjectMappingWriteDac, Persistence.Dac.PortalRouting.ClientProjectMappingWriteDac>();
+            
+            // Register Task Allocation DACs
+            services.AddScoped<Core.Abstractions.TaskAllocation.IProjectAssignmentReadDac, Persistence.Dac.TaskAllocation.ProjectAssignmentReadDac>();
+            services.AddScoped<Core.Abstractions.TaskAllocation.ITaskAllocationWriteDac, Persistence.Dac.TaskAllocation.TaskAllocationWriteDac>();
 
             // Register Mapperly mappers (singleton - stateless, compile-time generated)
             // Zero runtime overhead, no reflection, just pure generated C# code
             services.AddSingleton<Mapping.SalesMapper>();
             services.AddSingleton<Mapping.Audit.AuditPayloadMapper>();
+            services.AddSingleton<Mapping.PortalRoutingMapper>();
+            services.AddSingleton<Mapping.TaskAllocationMapper>();
 
             // Register audit services
             services.AddScoped<IAuditPayloadDecoderService, AuditPayloadDecoderService>();
 
-            // Cache warmup hosted service (runs at startup to pre-warm tenant connection strings)
-            // This prevents cold-start cache stampede under high concurrency (200+ req/s)
-            // Dynamically discovers all active tenants from TenantMaster database
-            services.AddHostedService<CacheWarmupHostedService>();
+            // Cache warmup hosted service REMOVED for Single-DB architecture.
+            // services.AddHostedService<CacheWarmupHostedService>();
 
             return services;
         }
