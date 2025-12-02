@@ -8,7 +8,7 @@ namespace Rgt.Space.Infrastructure.Commands.PortalRouting;
 public class DeleteMapping
 {
     // 1) Command contract
-    public sealed record DeleteMappingCommand(Guid Id) : IRequest<Result>;
+    public sealed record DeleteMappingCommand(Guid Id, Guid DeletedBy) : IRequest<Result>;
 
     // 2) Validator
     public sealed class Validator : AbstractValidator<DeleteMappingCommand>
@@ -51,7 +51,7 @@ public class DeleteMapping
                 return Result.Fail("MAPPING_NOT_FOUND");
 
             // Soft Delete Mapping
-            await _writeDac.SoftDeleteAsync(command.Id, ct);
+            await _writeDac.SoftDeleteAsync(command.Id, command.DeletedBy, ct);
 
             return Result.Ok();
         }

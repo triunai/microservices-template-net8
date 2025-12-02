@@ -20,6 +20,9 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
+    // Enable PII logging to debug OIDC issues
+    Microsoft.IdentityModel.Logging.IdentityModelEventSource.ShowPII = true;
+
     Log.Information("Starting up MicroservicesBase.API");
 
     var builder = WebApplication.CreateBuilder(args);
@@ -75,6 +78,9 @@ try
         {
             var authConfig = builder.Configuration.GetSection("Auth");
 
+            // Disable claim type mapping to keep claims as-is (e.g. "sub" -> "sub")
+            options.MapInboundClaims = false;
+
             // Point to SSO Broker for OIDC Discovery
             options.Authority = authConfig["Authority"];
             options.Audience = authConfig["Audience"];
@@ -93,10 +99,44 @@ try
 
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.FromMinutes(5),
-
-                // IssuerSigningKey is automatically fetched from JWKS endpoint
-                // No manual key configuration needed (RSA public key from SSO Broker)
             };
+
+            // DEV ONLY: DIAGNOSTIC - Hardcode the key to bypass Discovery issues
+            if (builder.Environment.IsDevelopment())
+            {
+                try 
+                {
+                    var rsa = System.Security.Cryptography.RSA.Create();
+                    rsa.ImportParameters(new System.Security.Cryptography.RSAParameters
+                    {
+                        // Values from https://localhost:7012/.well-known/jwks.json
+                        Modulus = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes("rNH-ckvzkKRcqAKmb8CDdABZ-4_fUgI-vjSRoDfz-kCDtFdxTD69XvqUGP4NRyPXiSwI3ODh1_iBv-eg1RCBB8iA8eNLHuD5VbeMq4J5_ktCUjAUBQ783cs9R_7RKyLRrlW-Cq0EiZ-Z0I5vyWE9yzCN7Mf1MU2cn4GnAxMsJFlMwNEstbupqZWIgZXqLxrHcXcUpS-zpPkJULI4tDsUTjXMih8hU2ikrb_EltNYi0tcIBV6TfoBEc3OGiz8ao4mZ8UiKLBMwUi00qvQRtGl3xm0idh3sF2sGunIkTlRFtsBzjNpTqcAotyRXTNuQOTExX_dRL8C74eHUwd2J9quQQ"),
+                        Exponent = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes("AQAB")
+                    });
+
+                    var key = new Microsoft.IdentityModel.Tokens.RsaSecurityKey(rsa) { KeyId = "rsa-2025-11-27" };
+
+                    // FORCE THE KEY and DISABLE DISCOVERY
+                    options.TokenValidationParameters.IssuerSigningKey = key;
+                    options.Configuration = new Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration
+                    {
+                        Issuer = authConfig["Authority"],
+                    };
+                    options.Configuration.SigningKeys.Add(key);
+                    
+                    Log.Warning("DEV MODE: Using Hardcoded RSA Key for Token Validation to bypass OIDC Discovery.");
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Failed to configure hardcoded key.");
+                }
+            }
+            else 
+            {
+                // Production or other envs: Use standard discovery
+                // (The previous explicit config manager code was removed for this test, 
+                // but in prod we would just rely on default behavior)
+            }
 
             // JIT User Provisioning: Sync user from SSO on every token validation
             options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
@@ -124,7 +164,12 @@ try
                         var syncService = context.HttpContext.RequestServices
                             .GetRequiredService<Rgt.Space.Core.Abstractions.Identity.IIdentitySyncService>();
 
-                        await syncService.SyncUserFromSsoAsync(provider, subject, email, name!, context.HttpContext.RequestAborted);
+                        // Sync user and get Local ID
+                        var localUserId = await syncService.SyncOrGetUserAsync(provider, subject, email, name!, context.HttpContext.RequestAborted);
+                        
+                        // Attach Local ID to Principal
+                        var claimsIdentity = context.Principal?.Identity as System.Security.Claims.ClaimsIdentity;
+                        claimsIdentity?.AddClaim(new System.Security.Claims.Claim("x-local-user-id", localUserId.ToString()));
                     }
                     catch (Exception ex)
                     {

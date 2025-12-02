@@ -2,6 +2,7 @@ using FluentResults;
 using FluentValidation;
 using MediatR;
 using Rgt.Space.Core.Abstractions.PortalRouting;
+using Rgt.Space.Core.Constants;
 
 namespace Rgt.Space.Infrastructure.Commands.PortalRouting;
 
@@ -12,7 +13,8 @@ public class UpdateMapping
         Guid Id,
         string RoutingUrl,
         string Environment,
-        string Status
+        string Status,
+        Guid UpdatedBy
     ) : IRequest<Result>;
 
     // 2) Validator
@@ -39,7 +41,7 @@ public class UpdateMapping
 
             RuleFor(x => x.Status)
                 .NotEmpty()
-                .Must(status => new[] { "Active", "Inactive" }.Contains(status))
+                .Must(status => StatusConstants.All.Contains(status))
                 .WithErrorCode("INVALID_STATUS")
                 .WithMessage("Status must be one of: Active, Inactive");
         }
@@ -87,6 +89,7 @@ public class UpdateMapping
                 command.RoutingUrl,
                 command.Environment,
                 command.Status,
+                command.UpdatedBy,
                 ct);
 
             return Result.Ok();

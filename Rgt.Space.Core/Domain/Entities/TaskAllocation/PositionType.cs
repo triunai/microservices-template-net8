@@ -1,3 +1,4 @@
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Primitives;
 
 namespace Rgt.Space.Core.Domain.Entities.TaskAllocation;
@@ -8,14 +9,14 @@ public sealed class PositionType
     public string Name { get; private set; } = string.Empty;
     public string? Description { get; private set; }
     public int SortOrder { get; private set; }
-    public bool IsActive { get; private set; } = true;
+    public string Status { get; private set; } = StatusConstants.Active;
     
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
     private PositionType() { }
 
-    public static PositionType Create(string code, string name, int sortOrder, string? description = null)
+    public static PositionType Create(string code, string name, int sortOrder, string? description = null, string status = StatusConstants.Active)
     {
         return new PositionType
         {
@@ -23,7 +24,7 @@ public sealed class PositionType
             Name = name,
             SortOrder = sortOrder,
             Description = description,
-            IsActive = true,
+            Status = status,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };

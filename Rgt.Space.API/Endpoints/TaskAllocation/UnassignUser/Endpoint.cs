@@ -12,12 +12,12 @@ public class UnassignUserRequest
     public string PositionCode { get; set; } = default!;
 }
 
-public sealed class Endpoint(IMediator mediator) : Endpoint<UnassignUserRequest>
+public sealed class Endpoint(IMediator mediator, Rgt.Space.Core.Abstractions.Identity.ICurrentUser currentUser) : Endpoint<UnassignUserRequest>
 {
     public override void Configure()
     {
         Delete("/api/v1/projects/{projectId:guid}/assignments/{userId:guid}/{positionCode}");
-        AllowAnonymous(); // TODO: Auth
+        // AllowAnonymous(); // TODO: Remove in Phase 2
 
         Summary(s =>
         {
@@ -30,8 +30,7 @@ public sealed class Endpoint(IMediator mediator) : Endpoint<UnassignUserRequest>
 
     public override async Task HandleAsync(UnassignUserRequest req, CancellationToken ct)
     {
-        // TODO: Extract from claims
-        Guid? unassignedBy = null;
+        var unassignedBy = currentUser.Id;
 
         var cmd = new TaskAllocationCommands.UnassignUser.Command(req.ProjectId, req.UserId, req.PositionCode, unassignedBy);
         var res = await mediator.Send(cmd, ct);

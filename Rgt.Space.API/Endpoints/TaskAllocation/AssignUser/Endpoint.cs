@@ -12,13 +12,13 @@ public class AssignUserRequest
     public string PositionCode { get; set; } = default!;
 }
 
-public sealed class Endpoint(IMediator mediator) : Endpoint<AssignUserRequest>
+public sealed class Endpoint(IMediator mediator, Rgt.Space.Core.Abstractions.Identity.ICurrentUser currentUser) : Endpoint<AssignUserRequest>
 {
     public override void Configure()
     {
         Post("/api/v1/projects/{projectId:guid}/assignments");
-        AllowAnonymous(); // TODO: Auth
-
+        // AllowAnonymous(); // TODO: Remove in Phase 2
+        
         Summary(s =>
         {
             s.Summary = "Assign user to project";
@@ -30,8 +30,7 @@ public sealed class Endpoint(IMediator mediator) : Endpoint<AssignUserRequest>
 
     public override async Task HandleAsync(AssignUserRequest req, CancellationToken ct)
     {
-        // TODO: Extract from claims
-        Guid? assignedBy = null;
+        var assignedBy = currentUser.Id;
 
         var cmd = new TaskAllocationCommands.AssignUser.Command(req.ProjectId, req.UserId, req.PositionCode, assignedBy);
         var res = await mediator.Send(cmd, ct);

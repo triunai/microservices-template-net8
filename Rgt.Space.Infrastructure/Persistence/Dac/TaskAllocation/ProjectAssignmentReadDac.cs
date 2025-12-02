@@ -14,21 +14,18 @@ namespace Rgt.Space.Infrastructure.Persistence.Dac.TaskAllocation;
 
 public sealed class ProjectAssignmentReadDac : IProjectAssignmentReadDac
 {
-    private readonly ITenantConnectionFactory _connFactory;
-    private readonly ITenantProvider _tenant;
+    private readonly ISystemConnectionFactory _systemConnFactory;
     private readonly ResiliencePipelineRegistry<string> _pipelineRegistry;
     private readonly IOptions<ResilienceSettings> _resilienceSettings;
     private readonly ILogger<ProjectAssignmentReadDac> _logger;
 
     public ProjectAssignmentReadDac(
-        ITenantConnectionFactory connFactory,
-        ITenantProvider tenant,
+        ISystemConnectionFactory systemConnFactory,
         ResiliencePipelineRegistry<string> pipelineRegistry,
         IOptions<ResilienceSettings> resilienceSettings,
         ILogger<ProjectAssignmentReadDac> logger)
     {
-        _connFactory = connFactory;
-        _tenant = tenant;
+        _systemConnFactory = systemConnFactory;
         _pipelineRegistry = pipelineRegistry;
         _resilienceSettings = resilienceSettings;
         _logger = logger;
@@ -36,18 +33,18 @@ public sealed class ProjectAssignmentReadDac : IProjectAssignmentReadDac
 
     private ResiliencePipeline GetPipeline()
     {
-        var tenantId = _tenant.Id ?? "Global";
-        var pipelineKey = tenantId;
-
+        // Project Assignment reads are treated as system/global operations here
+        const string pipelineKey = "System";
+        
         if (!_pipelineRegistry.TryGetPipeline(pipelineKey, out var pipeline))
         {
             _pipelineRegistry.TryAddBuilder(pipelineKey, (builder, context) =>
             {
-                var settings = _resilienceSettings.Value.TenantDb;
+                var settings = _resilienceSettings.Value.MasterDb;
                 builder.AddPipelineFromSettings(
                     settings,
                     ResiliencePolicies.IsSqlTransientError,
-                    $"TenantDb:{tenantId}",
+                    $"Db:{pipelineKey}",
                     _logger);
             });
             pipeline = _pipelineRegistry.GetPipeline(pipelineKey);
@@ -57,9 +54,9 @@ public sealed class ProjectAssignmentReadDac : IProjectAssignmentReadDac
 
     public async Task<IReadOnlyList<ProjectAssignmentReadModel>> GetAllAsync(CancellationToken ct)
     {
-        var tenantId = _tenant.Id ?? "Global";
+        // "God View" - Global query across all projects
         var pipeline = GetPipeline();
-        var connString = await _connFactory.GetSqlConnectionStringAsync(tenantId, ct);
+        var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
 
         return await pipeline.ExecuteAsync(async token =>
         {
@@ -92,9 +89,8 @@ public sealed class ProjectAssignmentReadDac : IProjectAssignmentReadDac
 
     public async Task<IReadOnlyList<ProjectAssignmentReadModel>> GetByProjectIdAsync(Guid projectId, CancellationToken ct)
     {
-        var tenantId = _tenant.Id;
         var pipeline = GetPipeline();
-        var connString = await _connFactory.GetSqlConnectionStringAsync(tenantId, ct);
+        var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
 
         return await pipeline.ExecuteAsync(async token =>
         {

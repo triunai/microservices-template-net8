@@ -1,3 +1,4 @@
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Primitives;
 
 namespace Rgt.Space.Core.Domain.Entities.PortalRouting;
@@ -8,11 +9,11 @@ public sealed class Project : AuditableEntity
     public string Name { get; private set; } = string.Empty;
     public string Code { get; private set; } = string.Empty;
     public string? ExternalUrl { get; private set; }
-    public string Status { get; private set; } = "Active";
+    public string Status { get; private set; } = StatusConstants.Active;
 
     private Project(Guid id) : base(id) { }
 
-    public static Project Create(Guid clientId, string name, string code, string? externalUrl = null, string status = "Active")
+    public static Project Create(Guid clientId, string name, string code, string? externalUrl = null, string status = StatusConstants.Active)
     {
         return new Project(Guid.NewGuid())
         {

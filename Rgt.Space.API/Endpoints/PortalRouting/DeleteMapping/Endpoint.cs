@@ -5,12 +5,12 @@ using Rgt.Space.Infrastructure.Commands.PortalRouting;
 
 namespace Rgt.Space.API.Endpoints.PortalRouting.DeleteMapping;
 
-public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
+public sealed class Endpoint(IMediator mediator, Rgt.Space.Core.Abstractions.Identity.ICurrentUser currentUser) : EndpointWithoutRequest
 {
     public override void Configure()
     {
         Delete("/api/v1/portal-routing/mappings/{id:guid}");
-        AllowAnonymous(); // TODO: Add proper authorization
+        // AllowAnonymous(); // TODO: Remove in Phase 2
 
         Summary(s =>
         {
@@ -24,8 +24,9 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
     public override async Task HandleAsync(CancellationToken ct)
     {
         var id = Route<Guid>("id");
+        var deletedBy = currentUser.Id;
         
-        var command = new Rgt.Space.Infrastructure.Commands.PortalRouting.DeleteMapping.DeleteMappingCommand(id);
+        var command = new Rgt.Space.Infrastructure.Commands.PortalRouting.DeleteMapping.DeleteMappingCommand(id, deletedBy);
 
         var res = await mediator.Send(command, ct);
 

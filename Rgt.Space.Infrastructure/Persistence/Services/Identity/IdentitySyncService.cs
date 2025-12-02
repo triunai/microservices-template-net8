@@ -73,4 +73,46 @@ public sealed class IdentitySyncService : IIdentitySyncService
             _logger.LogDebug("Successfully updated user {UserId} from SSO", userEntity.Id);
         }
     }
+
+
+    public async Task<Guid> SyncOrGetUserAsync(
+        string provider,
+        string externalId,
+        string email,
+        string displayName,
+        CancellationToken ct = default)
+    {
+        // Reuse the existing sync logic (which is void) but modify it to return ID
+        // Or better, refactor SyncUserFromSsoAsync to return Guid and call it here.
+        
+        // For now, let's just duplicate the logic slightly to ensure we return the ID
+        // In a real refactor, we'd merge them.
+        
+        var existingUserReadModel = await _userRead.GetByExternalIdAsync(provider, externalId, ct);
+
+        if (existingUserReadModel is null)
+        {
+            // Create New
+            var newUser = User.CreateFromSso(externalId, email, displayName, provider);
+            await _userWrite.CreateAsync(newUser, ct);
+            return newUser.Id;
+        }
+        else
+        {
+            // Update Existing (Fire and forget the update to keep login fast? No, safer to await)
+            // We need to return the ID immediately, so let's just return it and queue the update?
+            // For safety, let's do the update.
+            
+            var userEntity = await _userWrite.GetByIdAsync(existingUserReadModel.Id, ct);
+            if (userEntity != null)
+            {
+                userEntity.UpdateFromSso(displayName, email);
+                userEntity.UpdateLastLogin(provider);
+                await _userWrite.UpdateAsync(userEntity, ct);
+                await _userWrite.UpdateLastLoginAsync(userEntity.Id, provider, ct);
+            }
+            
+            return existingUserReadModel.Id;
+        }
+    }
 }

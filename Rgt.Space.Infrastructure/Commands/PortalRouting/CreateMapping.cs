@@ -12,7 +12,8 @@ public class CreateMapping
     public sealed record CreateMappingCommand(
         Guid ProjectId,
         string RoutingUrl,
-        string Environment
+        string Environment,
+        Guid CreatedBy
     ) : IRequest<Result<Guid>>;
 
     // 2) Validator
@@ -80,6 +81,7 @@ public class CreateMapping
                 command.ProjectId,
                 command.RoutingUrl,
                 command.Environment,
+                command.CreatedBy,
                 ct);
 
             return Result.Ok(id);

@@ -5,32 +5,34 @@ using Npgsql;
 using Polly;
 using Polly.Registry;
 using Rgt.Space.Core.Abstractions.PortalRouting;
+using Rgt.Space.Core.Abstractions.Tenancy;
 using Rgt.Space.Core.ReadModels;
 
 namespace Rgt.Space.Infrastructure.Persistence.Dac.PortalRouting;
 
 public sealed class ClientReadDac : IClientReadDac
 {
-    private readonly string _connectionString;
+    private readonly ISystemConnectionFactory _systemConnFactory;
     private readonly ResiliencePipeline _pipeline;
     private readonly ILogger<ClientReadDac> _logger;
 
     public ClientReadDac(
-        IConfiguration configuration,
+        ISystemConnectionFactory systemConnFactory,
         ResiliencePipelineProvider<string> pipelineProvider,
         ILogger<ClientReadDac> logger)
     {
-        _connectionString = configuration.GetConnectionString("PortalDb")
-            ?? throw new InvalidOperationException("PortalDb connection string not found");
+        _systemConnFactory = systemConnFactory;
+        // PortalDb is the system database
         _pipeline = pipelineProvider.GetPipeline("PortalDb");
         _logger = logger;
     }
 
     public async Task<ClientReadModel?> GetByIdAsync(Guid clientId, CancellationToken ct)
     {
+        var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
         return await _pipeline.ExecuteAsync(async token =>
         {
-            await using var conn = new NpgsqlConnection(_connectionString);
+            await using var conn = new NpgsqlConnection(connString);
             const string sql = @"
                 SELECT id, name, code, status, created_at, updated_at
                 FROM clients
@@ -45,9 +47,10 @@ public sealed class ClientReadDac : IClientReadDac
 
     public async Task<ClientReadModel?> GetByCodeAsync(string code, CancellationToken ct)
     {
+        var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
         return await _pipeline.ExecuteAsync(async token =>
         {
-            await using var conn = new NpgsqlConnection(_connectionString);
+            await using var conn = new NpgsqlConnection(connString);
             const string sql = @"
                 SELECT id, name, code, status, created_at, updated_at
                 FROM clients
@@ -62,9 +65,10 @@ public sealed class ClientReadDac : IClientReadDac
 
     public async Task<IReadOnlyList<ClientReadModel>> GetAllAsync(CancellationToken ct)
     {
+        var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
         return await _pipeline.ExecuteAsync(async token =>
         {
-            await using var conn = new NpgsqlConnection(_connectionString);
+            await using var conn = new NpgsqlConnection(connString);
             const string sql = @"
                 SELECT id, name, code, status, created_at, updated_at
                 FROM clients

@@ -6,12 +6,12 @@ using Rgt.Space.Infrastructure.Commands.PortalRouting;
 
 namespace Rgt.Space.API.Endpoints.PortalRouting.UpdateMapping;
 
-public sealed class Endpoint(IMediator mediator) : Endpoint<UpdateMappingRequest>
+public sealed class Endpoint(IMediator mediator, Rgt.Space.Core.Abstractions.Identity.ICurrentUser currentUser) : Endpoint<UpdateMappingRequest>
 {
     public override void Configure()
     {
         Put("/api/v1/portal-routing/mappings/{id:guid}");
-        AllowAnonymous(); // TODO: Add proper authorization
+        // AllowAnonymous(); // TODO: Remove in Phase 2
 
         Summary(s =>
         {
@@ -26,12 +26,14 @@ public sealed class Endpoint(IMediator mediator) : Endpoint<UpdateMappingRequest
     public override async Task HandleAsync(UpdateMappingRequest req, CancellationToken ct)
     {
         var id = Route<Guid>("id");
+        var updatedBy = currentUser.Id;
         
         var command = new Rgt.Space.Infrastructure.Commands.PortalRouting.UpdateMapping.UpdateMappingCommand(
             id,
             req.RoutingUrl,
             req.Environment,
-            req.Status
+            req.Status,
+            updatedBy
         );
 
         var res = await mediator.Send(command, ct);

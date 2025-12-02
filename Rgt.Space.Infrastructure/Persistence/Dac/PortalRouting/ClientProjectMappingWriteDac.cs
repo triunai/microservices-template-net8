@@ -25,7 +25,7 @@ public sealed class ClientProjectMappingWriteDac : IClientProjectMappingWriteDac
         _logger = logger;
     }
 
-    public async Task<Guid> CreateAsync(Guid projectId, string routingUrl, string environment, CancellationToken ct)
+    public async Task<Guid> CreateAsync(Guid projectId, string routingUrl, string environment, Guid createdBy, CancellationToken ct)
     {
         return await _pipeline.ExecuteAsync(async token =>
         {
@@ -34,21 +34,22 @@ public sealed class ClientProjectMappingWriteDac : IClientProjectMappingWriteDac
 
             const string sql = @"
                 INSERT INTO client_project_mappings
-                    (id, project_id, routing_url, environment, status, created_at, updated_at, is_deleted)
+                    (id, project_id, routing_url, environment, status, created_at, created_by, updated_at, updated_by, is_deleted)
                 VALUES
-                    (uuid_generate_v7(), @ProjectId, @RoutingUrl, @Environment, 'Active', now(), now(), false)
+                    (uuid_generate_v7(), @ProjectId, @RoutingUrl, @Environment, 'Active', now(), @CreatedBy, now(), @CreatedBy, false)
                 RETURNING id";
 
             return await conn.ExecuteScalarAsync<Guid>(sql, new
             {
                 ProjectId = projectId,
                 RoutingUrl = routingUrl,
-                Environment = environment
+                Environment = environment,
+                CreatedBy = createdBy
             });
         }, ct);
     }
 
-    public async Task UpdateAsync(Guid id, string routingUrl, string environment, string status, CancellationToken ct)
+    public async Task UpdateAsync(Guid id, string routingUrl, string environment, string status, Guid updatedBy, CancellationToken ct)
     {
         await _pipeline.ExecuteAsync(async token =>
         {
@@ -61,7 +62,8 @@ public sealed class ClientProjectMappingWriteDac : IClientProjectMappingWriteDac
                     routing_url = @RoutingUrl,
                     environment = @Environment,
                     status = @Status,
-                    updated_at = now()
+                    updated_at = now(),
+                    updated_by = @UpdatedBy
                 WHERE id = @Id AND is_deleted = FALSE";
 
             await conn.ExecuteAsync(sql, new
@@ -69,12 +71,13 @@ public sealed class ClientProjectMappingWriteDac : IClientProjectMappingWriteDac
                 Id = id,
                 RoutingUrl = routingUrl,
                 Environment = environment,
-                Status = status
+                Status = status,
+                UpdatedBy = updatedBy
             });
         }, ct);
     }
 
-    public async Task SoftDeleteAsync(Guid id, CancellationToken ct)
+    public async Task SoftDeleteAsync(Guid id, Guid deletedBy, CancellationToken ct)
     {
         await _pipeline.ExecuteAsync(async token =>
         {
@@ -86,10 +89,12 @@ public sealed class ClientProjectMappingWriteDac : IClientProjectMappingWriteDac
                 SET
                     is_deleted = TRUE,
                     deleted_at = now(),
-                    updated_at = now()
+                    deleted_by = @DeletedBy,
+                    updated_at = now(),
+                    updated_by = @DeletedBy
                 WHERE id = @Id AND is_deleted = FALSE";
 
-            await conn.ExecuteAsync(sql, new { Id = id });
+            await conn.ExecuteAsync(sql, new { Id = id, DeletedBy = deletedBy });
         }, ct);
     }
 }

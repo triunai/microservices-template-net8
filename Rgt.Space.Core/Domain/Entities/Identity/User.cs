@@ -122,4 +122,14 @@ public sealed class User : AuditableEntity
         if (!string.IsNullOrEmpty(email)) Email = email;
         UpdatedAt = DateTime.UtcNow;
     }
+
+    public void UpdateDetails(string displayName, string email, string? contactNumber, bool isActive, Guid updatedBy)
+    {
+        DisplayName = displayName;
+        Email = email;
+        ContactNumber = contactNumber;
+        IsActive = isActive;
+        UpdatedAt = DateTime.UtcNow;
+        UpdatedBy = updatedBy;
+    }
 }

@@ -15,7 +15,7 @@ public sealed class Endpoint(IMediator mediator) : Endpoint<GetProjectAssignment
     public override void Configure()
     {
         Get("/api/v1/projects/{projectId:guid}/assignments");
-        AllowAnonymous(); // TODO: Add Auth
+        // AllowAnonymous(); // TODO: Add Auth
 
         Summary(s =>
         {

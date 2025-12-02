@@ -162,4 +162,84 @@ public sealed class UserWriteDac : IUserWriteDac
             deletedBy: row.deleted_by
         );
     }
+
+    public async Task<bool> GrantPermissionAsync(Guid userId, string module, string subModule, bool canView, bool canInsert, bool canEdit, bool canDelete, Guid grantedBy, CancellationToken ct = default)
+    {
+        var connString = await _connFactory.GetSqlConnectionStringAsync(string.Empty, ct);
+        await using var conn = new NpgsqlConnection(connString);
+
+        const string sql = @"
+            WITH target_resource AS (
+                SELECT r.id 
+                FROM resources r
+                JOIN modules m ON r.module_id = m.id
+                WHERE m.code = @Module AND r.code = @SubModule
+            ),
+            target_permissions AS (
+                SELECT p.id, a.code
+                FROM permissions p
+                JOIN actions a ON p.action_id = a.id
+                WHERE p.resource_id = (SELECT id FROM target_resource)
+            )
+            INSERT INTO user_permission_overrides (
+                user_id, permission_id, is_allowed, 
+                created_at, created_by, updated_at, updated_by
+            )
+            SELECT 
+                @UserId, tp.id, 
+                CASE 
+                    WHEN tp.code = 'VIEW' THEN @CanView
+                    WHEN tp.code = 'INSERT' THEN @CanInsert
+                    WHEN tp.code = 'EDIT' THEN @CanEdit
+                    WHEN tp.code = 'DELETE' THEN @CanDelete
+                END,
+                @Now, @GrantedBy, @Now, @GrantedBy
+            FROM target_permissions tp
+            WHERE tp.code IN ('VIEW', 'INSERT', 'EDIT', 'DELETE')
+            ON CONFLICT (user_id, permission_id) DO UPDATE SET
+                is_allowed = EXCLUDED.is_allowed,
+                updated_at = EXCLUDED.updated_at,
+                updated_by = EXCLUDED.updated_by;";
+
+        var rowsAffected = await conn.ExecuteAsync(sql, new
+        {
+            UserId = userId,
+            Module = module,
+            SubModule = subModule,
+            CanView = canView,
+            CanInsert = canInsert,
+            CanEdit = canEdit,
+            CanDelete = canDelete,
+            GrantedBy = grantedBy,
+            Now = DateTime.UtcNow
+        });
+
+        return rowsAffected > 0;
+    }
+
+    public async Task<bool> RevokePermissionAsync(Guid userId, string module, string subModule, Guid revokedBy, CancellationToken ct = default)
+    {
+        var connString = await _connFactory.GetSqlConnectionStringAsync(string.Empty, ct);
+        await using var conn = new NpgsqlConnection(connString);
+
+        const string sql = @"
+            DELETE FROM user_permission_overrides
+            WHERE user_id = @UserId
+              AND permission_id IN (
+                  SELECT p.id
+                  FROM permissions p
+                  JOIN resources r ON p.resource_id = r.id
+                  JOIN modules m ON r.module_id = m.id
+                  WHERE m.code = @Module AND r.code = @SubModule
+              );";
+
+        var rowsAffected = await conn.ExecuteAsync(sql, new
+        {
+            UserId = userId,
+            Module = module,
+            SubModule = subModule
+        });
+
+        return rowsAffected > 0;
+    }
 }

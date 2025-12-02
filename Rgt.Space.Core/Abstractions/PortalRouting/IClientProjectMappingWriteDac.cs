@@ -9,15 +9,18 @@ public interface IClientProjectMappingWriteDac
     /// <summary>
     /// Creates a new client-project mapping.
     /// </summary>
-    Task<Guid> CreateAsync(Guid projectId, string routingUrl, string environment, CancellationToken ct);
+    /// <summary>
+    /// Creates a new client-project mapping.
+    /// </summary>
+    Task<Guid> CreateAsync(Guid projectId, string routingUrl, string environment, Guid createdBy, CancellationToken ct);
 
     /// <summary>
     /// Updates an existing client-project mapping.
     /// </summary>
-    Task UpdateAsync(Guid id, string routingUrl, string environment, string status, CancellationToken ct);
+    Task UpdateAsync(Guid id, string routingUrl, string environment, string status, Guid updatedBy, CancellationToken ct);
 
     /// <summary>
     /// Soft deletes a client-project mapping.
     /// </summary>
-    Task SoftDeleteAsync(Guid id, CancellationToken ct);
+    Task SoftDeleteAsync(Guid id, Guid deletedBy, CancellationToken ct);
 }

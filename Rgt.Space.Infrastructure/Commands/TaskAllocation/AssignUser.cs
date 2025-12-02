@@ -2,6 +2,7 @@ using FluentResults;
 using FluentValidation;
 using MediatR;
 using Rgt.Space.Core.Abstractions.TaskAllocation;
+using Rgt.Space.Core.Constants;
 
 namespace Rgt.Space.Infrastructure.Commands.TaskAllocation;
 
@@ -17,18 +18,11 @@ public class AssignUser
             RuleFor(x => x.UserId).NotEmpty().WithErrorCode("USER_ID_REQUIRED");
             RuleFor(x => x.PositionCode)
                 .NotEmpty().WithErrorCode("POSITION_CODE_REQUIRED")
-                .Must(code => ValidPositions.Contains(code))
+                .Must(code => TaskAllocationConstants.Positions.All.Contains(code))
                 .WithErrorCode("INVALID_POSITION_CODE")
-                .WithMessage($"Position code must be one of: {string.Join(", ", ValidPositions)}");
+                .WithMessage($"Position code must be one of: {string.Join(", ", TaskAllocationConstants.Positions.All)}");
             // RuleFor(x => x.AssignedBy).NotEmpty().WithErrorCode("ASSIGNED_BY_REQUIRED"); // Optional for now
         }
-
-        private static readonly HashSet<string> ValidPositions = new()
-        {
-            "TECH_PIC", "TECH_BACKUP",
-            "FUNC_PIC", "FUNC_BACKUP",
-            "SUPPORT_PIC", "SUPPORT_BACKUP"
-        };
     }
 
     public sealed class Handler : IRequestHandler<Command, Result>

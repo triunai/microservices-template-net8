@@ -13,5 +13,7 @@ public sealed record UserReadModel(
     DateTime? LastLoginAt,
     string? LastLoginProvider,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    Guid? CreatedBy,
+    DateTime UpdatedAt,
+    Guid? UpdatedBy
 );

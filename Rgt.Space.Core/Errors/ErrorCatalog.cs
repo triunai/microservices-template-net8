@@ -40,6 +40,7 @@
         public const string ROUTING_URL_ALREADY_EXISTS = "ROUTING_URL_ALREADY_EXISTS";
         public const string PROJECT_NOT_FOUND = "PROJECT_NOT_FOUND";
         public const string INVALID_POSITION_CODE = "INVALID_POSITION_CODE";
+        public const string ASSIGNMENT_NOT_FOUND = "ASSIGNMENT_NOT_FOUND";
         
         /// <summary>
         /// Determines if an error code represents a validation error.
@@ -123,6 +124,7 @@
                 // Portal Routing
                 ROUTING_URL_ALREADY_EXISTS => 409,
                 PROJECT_NOT_FOUND => 404,
+                ASSIGNMENT_NOT_FOUND => 404,
 
                 // 500 Internal Server Error (default)
                 _ => 500
@@ -169,6 +171,7 @@
                 // Portal Routing
                 ROUTING_URL_ALREADY_EXISTS => "Routing URL Already Exists",
                 PROJECT_NOT_FOUND => "Project Not Found",
+                ASSIGNMENT_NOT_FOUND => "Assignment Not Found",
 
                 _ => "An Error Occurred"
             };

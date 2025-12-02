@@ -13,21 +13,18 @@ namespace Rgt.Space.Infrastructure.Persistence.Dac.TaskAllocation;
 
 public sealed class TaskAllocationWriteDac : ITaskAllocationWriteDac
 {
-    private readonly ITenantConnectionFactory _connFactory;
-    private readonly ITenantProvider _tenant;
+    private readonly ISystemConnectionFactory _systemConnFactory;
     private readonly ResiliencePipelineRegistry<string> _pipelineRegistry;
     private readonly IOptions<ResilienceSettings> _resilienceSettings;
     private readonly ILogger<TaskAllocationWriteDac> _logger;
 
     public TaskAllocationWriteDac(
-        ITenantConnectionFactory connFactory,
-        ITenantProvider tenant,
+        ISystemConnectionFactory systemConnFactory,
         ResiliencePipelineRegistry<string> pipelineRegistry,
         IOptions<ResilienceSettings> resilienceSettings,
         ILogger<TaskAllocationWriteDac> logger)
     {
-        _connFactory = connFactory;
-        _tenant = tenant;
+        _systemConnFactory = systemConnFactory;
         _pipelineRegistry = pipelineRegistry;
         _resilienceSettings = resilienceSettings;
         _logger = logger;
@@ -35,18 +32,19 @@ public sealed class TaskAllocationWriteDac : ITaskAllocationWriteDac
 
     private ResiliencePipeline GetPipeline()
     {
-        var tenantId = _tenant.Id ?? "Global";
-        var pipelineKey = tenantId;
+        // Task Allocation writes are always global/system operations in this context
+        // (assigning a user to a project is a cross-cutting concern)
+        const string pipelineKey = "System";
 
         if (!_pipelineRegistry.TryGetPipeline(pipelineKey, out var pipeline))
         {
             _pipelineRegistry.TryAddBuilder(pipelineKey, (builder, context) =>
             {
-                var settings = _resilienceSettings.Value.TenantDb;
+                var settings = _resilienceSettings.Value.MasterDb;
                 builder.AddPipelineFromSettings(
                     settings,
                     ResiliencePolicies.IsSqlTransientError,
-                    $"TenantDb:{tenantId}",
+                    $"Db:{pipelineKey}",
                     _logger);
             });
             pipeline = _pipelineRegistry.GetPipeline(pipelineKey);
@@ -57,7 +55,7 @@ public sealed class TaskAllocationWriteDac : ITaskAllocationWriteDac
     public async Task<bool> AssignUserAsync(Guid projectId, Guid userId, string positionCode, Guid? assignedBy, CancellationToken ct)
     {
         var pipeline = GetPipeline();
-        var connString = await _connFactory.GetSqlConnectionStringAsync(string.Empty, ct);
+        var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
 
         return await pipeline.ExecuteAsync(async token =>
         {
@@ -92,7 +90,7 @@ public sealed class TaskAllocationWriteDac : ITaskAllocationWriteDac
     public async Task<bool> UnassignUserAsync(Guid projectId, Guid userId, string positionCode, Guid? unassignedBy, CancellationToken ct)
     {
         var pipeline = GetPipeline();
-        var connString = await _connFactory.GetSqlConnectionStringAsync(string.Empty, ct);
+        var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
 
         return await pipeline.ExecuteAsync(async token =>
         {
@@ -118,7 +116,7 @@ public sealed class TaskAllocationWriteDac : ITaskAllocationWriteDac
     public async Task<bool> UpdateAssignmentAsync(Guid projectId, Guid userId, string oldPositionCode, string newPositionCode, Guid? updatedBy, CancellationToken ct)
     {
         var pipeline = GetPipeline();
-        var connString = await _connFactory.GetSqlConnectionStringAsync(string.Empty, ct);
+        var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
 
         return await pipeline.ExecuteAsync(async token =>
         {
@@ -148,11 +146,6 @@ public sealed class TaskAllocationWriteDac : ITaskAllocationWriteDac
 
                 if (deletedRows == 0)
                 {
-                    // If we couldn't delete the old one, it means it didn't exist or was already deleted.
-                    // We should abort the update to prevent creating a new assignment without removing the old one (if that was the intent).
-                    // Or should we proceed? The requirement is "Update", which implies "Change".
-                    // If old one is missing, it's not an update, it's a create.
-                    // Let's return false to indicate "Old assignment not found".
                     await transaction.RollbackAsync(token);
                     return false;
                 }

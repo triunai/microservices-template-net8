@@ -11,7 +11,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
     public override void Configure()
     {
         Get("/api/v1/portal-routing/clients/{clientId:guid}/projects");
-        AllowAnonymous(); // TODO: Add proper authorization
+        // AllowAnonymous(); // TODO: Add proper authorization
 
         Summary(s =>
         {

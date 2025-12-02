@@ -26,6 +26,7 @@ using Rgt.Space.Infrastructure.Persistence.Services.Audit;
 using Rgt.Space.Infrastructure.Persistence.Services.Identity;
 using Rgt.Space.Infrastructure.Persistence.Dac.Identity;
 using Rgt.Space.Infrastructure.Persistence.Dac;
+using Rgt.Space.Infrastructure.Identity;
 
 namespace Rgt.Space.Infrastructure
 {
@@ -127,6 +128,7 @@ namespace Rgt.Space.Infrastructure
             // Note: Redis (IDistributedCache) still available for future use (product catalog, sessions, etc.)
             services.AddSingleton<MasterTenantConnectionFactory>();
             services.AddSingleton<ITenantConnectionFactory, CachedTenantConnectionFactoryWithStampedeProtection>();
+            services.AddSingleton<ISystemConnectionFactory, SystemConnectionFactory>();
 
             // register DACs
             services.AddScoped<ISalesReadDac, SalesReadDac>();
@@ -138,6 +140,12 @@ namespace Rgt.Space.Infrastructure
             
             // Register Identity Services
             services.AddScoped<Core.Abstractions.Identity.IIdentitySyncService, IdentitySyncService>();
+
+            // Current User Context
+            // TODO: Make this configurable via appsettings (e.g., Auth:EnableMockAuth)
+            // For now, we default to DevCurrentUser to unblock development
+            services.AddScoped<Core.Abstractions.Identity.ICurrentUser, CurrentUser>(); 
+            // services.AddScoped<Core.Abstractions.Identity.ICurrentUser, DevCurrentUser>();
             
             // Register Portal Routing DACs
             services.AddScoped<Core.Abstractions.PortalRouting.IClientReadDac, Persistence.Dac.PortalRouting.ClientReadDac>();
@@ -149,6 +157,9 @@ namespace Rgt.Space.Infrastructure
             services.AddScoped<Core.Abstractions.TaskAllocation.IProjectAssignmentReadDac, Persistence.Dac.TaskAllocation.ProjectAssignmentReadDac>();
             services.AddScoped<Core.Abstractions.TaskAllocation.ITaskAllocationWriteDac, Persistence.Dac.TaskAllocation.TaskAllocationWriteDac>();
 
+            // Register Dashboard DACs
+            services.AddScoped<Core.Abstractions.Dashboard.IDashboardReadDac, Persistence.Dac.Dashboard.DashboardReadDac>();
+
             // Register Mapperly mappers (singleton - stateless, compile-time generated)
             // Zero runtime overhead, no reflection, just pure generated C# code
             services.AddSingleton<Mapping.SalesMapper>();
@@ -158,9 +169,6 @@ namespace Rgt.Space.Infrastructure
 
             // Register audit services
             services.AddScoped<IAuditPayloadDecoderService, AuditPayloadDecoderService>();
-
-            // Cache warmup hosted service REMOVED for Single-DB architecture.
-            // services.AddHostedService<CacheWarmupHostedService>();
 
             return services;
         }

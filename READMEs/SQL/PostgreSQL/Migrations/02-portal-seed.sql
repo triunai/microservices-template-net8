@@ -7,7 +7,8 @@
 INSERT INTO actions (id, name, code) VALUES
     (uuid_generate_v7(), 'View', 'VIEW'),
     (uuid_generate_v7(), 'Insert', 'INSERT'),
-    (uuid_generate_v7(), 'Edit', 'EDIT')
+    (uuid_generate_v7(), 'Edit', 'EDIT'),
+    (uuid_generate_v7(), 'Delete', 'DELETE')
 ON CONFLICT (code) DO NOTHING;
 
 -- 2.2 POSITION TYPES

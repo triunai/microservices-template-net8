@@ -6,12 +6,12 @@ using Rgt.Space.Infrastructure.Commands.PortalRouting;
 
 namespace Rgt.Space.API.Endpoints.PortalRouting.CreateMapping;
 
-public sealed class Endpoint(IMediator mediator) : Endpoint<CreateMappingRequest>
+public sealed class Endpoint(IMediator mediator, Rgt.Space.Core.Abstractions.Identity.ICurrentUser currentUser) : Endpoint<CreateMappingRequest>
 {
     public override void Configure()
     {
         Post("/api/v1/portal-routing/mappings");
-        AllowAnonymous(); // TODO: Add proper authorization
+        // AllowAnonymous(); // TODO: Remove in Phase 2
 
         Summary(s =>
         {
@@ -25,10 +25,13 @@ public sealed class Endpoint(IMediator mediator) : Endpoint<CreateMappingRequest
 
     public override async Task HandleAsync(CreateMappingRequest req, CancellationToken ct)
     {
+        var createdBy = currentUser.Id;
+
         var command = new Rgt.Space.Infrastructure.Commands.PortalRouting.CreateMapping.CreateMappingCommand(
             req.ProjectId,
             req.RoutingUrl,
-            req.Environment
+            req.Environment,
+            createdBy
         );
 
         var res = await mediator.Send(command, ct);

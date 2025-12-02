@@ -15,34 +15,52 @@ namespace Rgt.Space.Infrastructure.Persistence.Dac.Identity;
 
 public sealed class UserReadDac : IUserReadDac
 {
-    private readonly ITenantConnectionFactory _connFactory;
-    private readonly ITenantProvider _tenant;
+    private readonly ISystemConnectionFactory _connFactory;
     private readonly ResiliencePipelineRegistry<string> _pipelineRegistry;
     private readonly IOptions<ResilienceSettings> _resilienceSettings;
     private readonly ILogger<UserReadDac> _logger;
 
     public UserReadDac(
-        ITenantConnectionFactory connFactory,
-        ITenantProvider tenant,
+        ISystemConnectionFactory connFactory,
         ResiliencePipelineRegistry<string> pipelineRegistry,
         IOptions<ResilienceSettings> resilienceSettings,
         ILogger<UserReadDac> logger)
     {
         _connFactory = connFactory;
-        _tenant = tenant;
         _pipelineRegistry = pipelineRegistry;
         _resilienceSettings = resilienceSettings;
         _logger = logger;
     }
 
+    private ResiliencePipeline GetPipeline()
+    {
+        // Use a static key for system/global queries
+        const string pipelineKey = "System";
+        
+        if (!_pipelineRegistry.TryGetPipeline(pipelineKey, out var pipeline))
+        {
+            _pipelineRegistry.TryAddBuilder(pipelineKey, (builder, context) =>
+            {
+                // Use MasterDb settings for system queries as they are critical
+                var settings = _resilienceSettings.Value.MasterDb;
+                builder.AddPipelineFromSettings(
+                    settings,
+                    ResiliencePolicies.IsSqlTransientError,
+                    $"SystemDb",
+                    _logger);
+            });
+            pipeline = _pipelineRegistry.GetPipeline(pipelineKey);
+        }
+        return pipeline;
+    }
+
     public async Task<UserReadModel?> GetByIdAsync(Guid userId, CancellationToken ct)
     {
-        var tenantId = _tenant.Id!;
-        var pipeline = GetOrCreatePipeline(tenantId);
+        var pipeline = GetPipeline();
         
-        _logger.LogDebug("Querying user {UserId} for tenant {TenantId}", userId, tenantId);
+        _logger.LogDebug("Querying user {UserId} (System)", userId);
         
-        var connectionString = await _connFactory.GetSqlConnectionStringAsync(tenantId, ct);
+        var connectionString = await _connFactory.GetConnectionStringAsync(ct);
         
         return await pipeline.ExecuteAsync(async token =>
         {
@@ -63,7 +81,9 @@ public sealed class UserReadDac : IUserReadDac
                     last_login_at,
                     last_login_provider,
                     created_at,
-                    updated_at
+                    created_by,
+                    updated_at,
+                    updated_by
                 FROM users
                 WHERE id = @UserId AND is_deleted = FALSE";
 
@@ -74,7 +94,7 @@ public sealed class UserReadDac : IUserReadDac
 
             if (result is null)
             {
-                _logger.LogDebug("User {UserId} not found for tenant {TenantId}", userId, tenantId);
+                _logger.LogDebug("User {UserId} not found (System)", userId);
                 return null;
             }
 
@@ -91,16 +111,16 @@ public sealed class UserReadDac : IUserReadDac
                 result.last_login_at,
                 result.last_login_provider,
                 result.created_at,
-                result.updated_at);
+                result.created_by,
+                result.updated_at,
+                result.updated_by);
         }, ct);
     }
 
     public async Task<UserReadModel?> GetByEmailAsync(string email, CancellationToken ct)
     {
-        var tenantId = _tenant.Id!;
-        var pipeline = GetOrCreatePipeline(tenantId);
-        
-        var connectionString = await _connFactory.GetSqlConnectionStringAsync(tenantId, ct);
+        var pipeline = GetPipeline();
+        var connectionString = await _connFactory.GetConnectionStringAsync(ct);
         
         return await pipeline.ExecuteAsync(async token =>
         {
@@ -121,7 +141,9 @@ public sealed class UserReadDac : IUserReadDac
                     last_login_at,
                     last_login_provider,
                     created_at,
-                    updated_at
+                    created_by,
+                    updated_at,
+                    updated_by
                 FROM users
                 WHERE email = @Email AND is_deleted = FALSE";
 
@@ -145,16 +167,16 @@ public sealed class UserReadDac : IUserReadDac
                 result.last_login_at,
                 result.last_login_provider,
                 result.created_at,
-                result.updated_at);
+                result.created_by,
+                result.updated_at,
+                result.updated_by);
         }, ct);
     }
 
     public async Task<UserReadModel?> GetByExternalIdAsync(string provider, string externalId, CancellationToken ct)
     {
-        var tenantId = _tenant.Id!;
-        var pipeline = GetOrCreatePipeline(tenantId);
-        
-        var connectionString = await _connFactory.GetSqlConnectionStringAsync(tenantId, ct);
+        var pipeline = GetPipeline();
+        var connectionString = await _connFactory.GetConnectionStringAsync(ct);
         
         return await pipeline.ExecuteAsync(async token =>
         {
@@ -175,7 +197,9 @@ public sealed class UserReadDac : IUserReadDac
                     last_login_at,
                     last_login_provider,
                     created_at,
-                    updated_at
+                    created_by,
+                    updated_at,
+                    updated_by
                 FROM users
                 WHERE sso_provider = @Provider
                   AND external_id = @ExternalId
@@ -201,16 +225,16 @@ public sealed class UserReadDac : IUserReadDac
                 result.last_login_at,
                 result.last_login_provider,
                 result.created_at,
-                result.updated_at);
+                result.created_by,
+                result.updated_at,
+                result.updated_by);
         }, ct);
     }
 
     public async Task<IReadOnlyList<UserReadModel>> GetAllAsync(CancellationToken ct)
     {
-        var tenantId = _tenant.Id!;
-        var pipeline = GetOrCreatePipeline(tenantId);
-        
-        var connectionString = await _connFactory.GetSqlConnectionStringAsync(tenantId, ct);
+        var pipeline = GetPipeline();
+        var connectionString = await _connFactory.GetConnectionStringAsync(ct);
         
         return await pipeline.ExecuteAsync(async token =>
         {
@@ -231,7 +255,10 @@ public sealed class UserReadDac : IUserReadDac
                     last_login_at,
                     last_login_provider,
                     created_at,
-                    updated_at
+
+                    created_by,
+                    updated_at,
+                    updated_by
                 FROM users
                 WHERE is_deleted = FALSE
                 ORDER BY display_name";
@@ -254,28 +281,138 @@ public sealed class UserReadDac : IUserReadDac
                     r.last_login_at,
                     r.last_login_provider,
                     r.created_at,
-                    r.updated_at))
+                    r.created_by,
+                    r.updated_at,
+                    r.updated_by))
                 .ToList();
         }, ct);
     }
 
-    private ResiliencePipeline GetOrCreatePipeline(string tenantId)
+    public async Task<IReadOnlyList<UserReadModel>> SearchAsync(string searchTerm, CancellationToken ct)
     {
-        var pipelineKey = tenantId;
-        if (!_pipelineRegistry.TryGetPipeline(pipelineKey, out var pipeline))
+        var pipeline = GetPipeline();
+        var connectionString = await _connFactory.GetConnectionStringAsync(ct);
+        
+        return await pipeline.ExecuteAsync(async token =>
         {
-            _pipelineRegistry.TryAddBuilder(pipelineKey, (builder, context) =>
-            {
-                var settings = _resilienceSettings.Value.TenantDb;
-                builder.AddPipelineFromSettings(
-                    settings,
-                    ResiliencePolicies.IsSqlTransientError,
-                    $"TenantDb:{tenantId}",
-                    _logger);
-            });
-            pipeline = _pipelineRegistry.GetPipeline(pipelineKey);
-        }
-        return pipeline;
+            await using var conn = new NpgsqlConnection(connectionString);
+            await conn.OpenAsync(token);
+
+            var sql = @"
+                SELECT
+                    id,
+                    display_name,
+                    email,
+                    contact_number,
+                    is_active,
+                    local_login_enabled,
+                    sso_login_enabled,
+                    sso_provider,
+                    external_id,
+                    last_login_at,
+                    last_login_provider,
+                    created_at,
+                    created_by,
+                    updated_at,
+                    updated_by
+                FROM users
+                WHERE is_deleted = FALSE
+                  AND (display_name ILIKE @SearchTerm OR email ILIKE @SearchTerm)
+                ORDER BY display_name
+                LIMIT 20";
+
+            var results = await conn.QueryAsync<_UserRow>(
+                sql,
+                new { SearchTerm = $"%{searchTerm}%" },
+                commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+
+            return results
+                .Select(r => new UserReadModel(
+                    r.id,
+                    r.display_name,
+                    r.email,
+                    r.contact_number,
+                    r.is_active,
+                    r.local_login_enabled,
+                    r.sso_login_enabled,
+                    r.sso_provider,
+                    r.external_id,
+                    r.last_login_at,
+                    r.last_login_provider,
+                    r.created_at,
+                    r.created_by,
+                    r.updated_at,
+                    r.updated_by))
+                .ToList();
+        }, ct);
+    }
+
+    public async Task<IReadOnlyList<UserPermissionReadModel>> GetPermissionsAsync(Guid userId, CancellationToken ct)
+    {
+        var pipeline = GetPipeline();
+        var connectionString = await _connFactory.GetConnectionStringAsync(ct);
+        
+        return await pipeline.ExecuteAsync(async token =>
+        {
+            await using var conn = new NpgsqlConnection(connectionString);
+            await conn.OpenAsync(token);
+
+            var sql = @"
+                WITH effective_permissions AS (
+                    -- 1. Role Permissions
+                    SELECT rp.permission_id
+                    FROM user_roles ur
+                    JOIN role_permissions rp ON ur.role_id = rp.role_id
+                    JOIN roles r ON ur.role_id = r.id
+                    WHERE ur.user_id = @UserId
+                      AND r.is_active = TRUE
+
+                    UNION
+
+                    -- 2. Overrides (Allow)
+                    SELECT permission_id
+                    FROM user_permission_overrides
+                    WHERE user_id = @UserId
+                      AND is_allowed = TRUE
+
+                    EXCEPT
+
+                    -- 3. Overrides (Deny)
+                    SELECT permission_id
+                    FROM user_permission_overrides
+                    WHERE user_id = @UserId
+                      AND is_allowed = FALSE
+                )
+                SELECT
+                    m.code as module,
+                    r.code as sub_module,
+                    BOOL_OR(CASE WHEN a.code = 'VIEW' THEN TRUE ELSE FALSE END) as can_view,
+                    BOOL_OR(CASE WHEN a.code = 'INSERT' THEN TRUE ELSE FALSE END) as can_insert,
+                    BOOL_OR(CASE WHEN a.code = 'EDIT' THEN TRUE ELSE FALSE END) as can_edit,
+                    BOOL_OR(CASE WHEN a.code = 'DELETE' THEN TRUE ELSE FALSE END) as can_delete
+                FROM effective_permissions ep
+                JOIN permissions p ON ep.permission_id = p.id
+                JOIN resources r ON p.resource_id = r.id
+                JOIN modules m ON r.module_id = m.id
+                JOIN actions a ON p.action_id = a.id
+                GROUP BY m.code, r.code
+                ORDER BY m.code, r.code";
+
+            var results = await conn.QueryAsync<_UserPermissionRow>(
+                sql,
+                new { UserId = userId },
+                commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+
+            return results
+                .Select(r => new UserPermissionReadModel(
+                    r.module,
+                    r.sub_module,
+                    r.can_view,
+                    r.can_insert,
+                    r.can_edit,
+                    r.can_delete))
+                .ToList();
+        }, ct);
     }
 
     // Dapper row model
@@ -292,5 +429,15 @@ public sealed class UserReadDac : IUserReadDac
         DateTime? last_login_at,
         string? last_login_provider,
         DateTime created_at,
-        DateTime updated_at);
+        Guid? created_by,
+        DateTime updated_at,
+        Guid? updated_by);
+
+    private sealed record _UserPermissionRow(
+        string module,
+        string sub_module,
+        bool can_view,
+        bool can_insert,
+        bool can_edit,
+        bool can_delete);
 }
