@@ -45,6 +45,18 @@
         public const string ASSIGNMENT_NOT_FOUND = "ASSIGNMENT_NOT_FOUND";
         public const string CLIENT_HAS_PROJECTS = "CLIENT_HAS_PROJECTS";
         
+        // ===== User Account Management (UAM) Errors =====
+        public const string USER_NOT_FOUND = "USER_NOT_FOUND";
+        public const string USER_EMAIL_EXISTS = "USER_EMAIL_EXISTS";
+        public const string USER_PASSWORD_REQUIRED = "USER_PASSWORD_REQUIRED";
+        public const string USER_HAS_ASSIGNMENTS = "USER_HAS_ASSIGNMENTS";
+        
+        // ===== Role Management Errors =====
+        public const string ROLE_NOT_FOUND = "ROLE_NOT_FOUND";
+        public const string ROLE_CODE_EXISTS = "ROLE_CODE_EXISTS";
+        public const string ROLE_HAS_USERS = "ROLE_HAS_USERS";
+        public const string ROLE_IS_SYSTEM = "ROLE_IS_SYSTEM";
+        
         /// <summary>
         /// Determines if an error code represents a validation error.
         /// Validation errors return 400 Bad Request.
@@ -131,6 +143,18 @@
                 CLIENT_NOT_FOUND => 404,
                 ASSIGNMENT_NOT_FOUND => 404,
                 CLIENT_HAS_PROJECTS => 409,
+                
+                // User Account Management (UAM)
+                USER_NOT_FOUND => 404,
+                USER_EMAIL_EXISTS => 409,
+                USER_PASSWORD_REQUIRED => 400,
+                USER_HAS_ASSIGNMENTS => 409,
+                
+                // Role Management
+                ROLE_NOT_FOUND => 404,
+                ROLE_CODE_EXISTS => 409,
+                ROLE_HAS_USERS => 409,
+                ROLE_IS_SYSTEM => 403,
 
                 // 500 Internal Server Error (default)
                 _ => 500
@@ -181,6 +205,18 @@
                 CLIENT_NOT_FOUND => "Client Not Found",
                 ASSIGNMENT_NOT_FOUND => "Assignment Not Found",
                 CLIENT_HAS_PROJECTS => "Client Has Active Projects",
+                
+                // User Account Management (UAM)
+                USER_NOT_FOUND => "User Not Found",
+                USER_EMAIL_EXISTS => "Email Already Exists",
+                USER_PASSWORD_REQUIRED => "Password Required",
+                USER_HAS_ASSIGNMENTS => "User Has Active Assignments",
+                
+                // Role Management
+                ROLE_NOT_FOUND => "Role Not Found",
+                ROLE_CODE_EXISTS => "Role Code Already Exists",
+                ROLE_HAS_USERS => "Role Has Assigned Users",
+                ROLE_IS_SYSTEM => "Cannot Modify System Role",
 
                 _ => "An Error Occurred"
             };

@@ -137,6 +137,8 @@ namespace Rgt.Space.Infrastructure
             // Register Identity DACs
             services.AddScoped<Core.Abstractions.Identity.IUserReadDac, UserReadDac>();
             services.AddScoped<Core.Abstractions.Identity.IUserWriteDac, UserWriteDac>();
+            services.AddScoped<Core.Abstractions.Identity.IRoleReadDac, RoleReadDac>();
+            services.AddScoped<Core.Abstractions.Identity.IRoleWriteDac, RoleWriteDac>();
             
             // Register Identity Services
             services.AddScoped<Core.Abstractions.Identity.IIdentitySyncService, IdentitySyncService>();

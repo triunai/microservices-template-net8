@@ -256,4 +256,41 @@ public sealed class UserWriteDac : IUserWriteDac
 
         return rowsAffected > 0;
     }
+
+    public async Task DeleteAsync(Guid userId, Guid deletedBy, CancellationToken ct = default)
+    {
+        var connString = await _connFactory.GetSqlConnectionStringAsync(string.Empty, ct);
+        await using var conn = new NpgsqlConnection(connString);
+
+        const string sql = @"
+            UPDATE users 
+            SET is_deleted = TRUE, 
+                deleted_at = NOW() AT TIME ZONE 'utc', 
+                deleted_by = @DeletedBy,
+                is_active = FALSE,
+                updated_at = NOW() AT TIME ZONE 'utc',
+                updated_by = @DeletedBy
+            WHERE id = @Id AND is_deleted = FALSE;";
+
+        await conn.ExecuteAsync(sql, new { Id = userId, DeletedBy = deletedBy });
+    }
+
+    public async Task<int> DeleteUserAssignmentsAsync(Guid userId, Guid deletedBy, CancellationToken ct = default)
+    {
+        var connString = await _connFactory.GetSqlConnectionStringAsync(string.Empty, ct);
+        await using var conn = new NpgsqlConnection(connString);
+
+        // Soft-delete all project_assignments for this user
+        const string sql = @"
+            UPDATE project_assignments 
+            SET is_deleted = TRUE, 
+                deleted_at = NOW() AT TIME ZONE 'utc', 
+                deleted_by = @DeletedBy,
+                updated_at = NOW() AT TIME ZONE 'utc',
+                updated_by = @DeletedBy
+            WHERE user_id = @UserId AND is_deleted = FALSE;";
+
+        var rowsAffected = await conn.ExecuteAsync(sql, new { UserId = userId, DeletedBy = deletedBy });
+        return rowsAffected;
+    }
 }

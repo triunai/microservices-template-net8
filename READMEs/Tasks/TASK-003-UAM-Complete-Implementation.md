@@ -1,9 +1,11 @@
 # TASK-003: User Account Management (UAM) - Complete Implementation
 
-**Status:** 📋 PLANNED  
+**Status:** 🚧 IN PROGRESS  
 **Priority:** HIGH  
 **Created:** 2025-12-04  
+**Updated:** 2025-12-04  
 **Estimated Effort:** 4-6 hours  
+**Actual Effort:** ~2 hours (Phases 1-3 complete)
 
 ---
 
@@ -429,36 +431,36 @@ Rgt.Space.Infrastructure/
 
 ## ✅ Implementation Checklist
 
-### Phase 1: User CRUD
-- [ ] Create `CreateUser` command + handler
-- [ ] Create `CreateUser` endpoint
-- [ ] Add password hashing utility (HMAC-SHA512)
-- [ ] Create `DeleteUser` command + handler  
-- [ ] Create `DeleteUser` endpoint
-- [ ] Update `IUserWriteDac` interface
-- [ ] Update `UserWriteDac` implementation
+### Phase 1: User CRUD ✅ COMPLETE
+- [x] Create `CreateUser` command + handler
+- [x] Create `CreateUser` endpoint
+- [x] Add password hashing utility (HMAC-SHA512)
+- [x] Create `DeleteUser` command + handler  
+- [x] Create `DeleteUser` endpoint
+- [x] Update `IUserWriteDac` interface
+- [x] Update `UserWriteDac` implementation
 - [ ] Test Create User endpoint
 - [ ] Test Delete User endpoint (with cascade)
 
-### Phase 2: Role Management
-- [ ] Create `IRoleReadDac` interface
-- [ ] Create `IRoleWriteDac` interface
-- [ ] Create `RoleReadDac` implementation
-- [ ] Create `RoleWriteDac` implementation
-- [ ] Create `RoleReadModel`
-- [ ] Create `RoleResponse` DTO
-- [ ] Create `GetAllRoles` query + endpoint
-- [ ] Create `GetRoleById` query + endpoint
-- [ ] Create `CreateRole` command + endpoint
-- [ ] Create `UpdateRole` command + endpoint
-- [ ] Create `DeleteRole` command + endpoint
-- [ ] Register DACs in DI container
+### Phase 2: Role Management ✅ COMPLETE
+- [x] Create `IRoleReadDac` interface
+- [x] Create `IRoleWriteDac` interface
+- [x] Create `RoleReadDac` implementation
+- [x] Create `RoleWriteDac` implementation
+- [x] Create `RoleReadModel`
+- [x] Create Role DTOs (CreateRoleRequest, UpdateRoleRequest)
+- [x] Create `GetAllRoles` query + endpoint
+- [x] Create `GetRoleById` query + endpoint
+- [x] Create `CreateRole` command + endpoint
+- [x] Create `UpdateRole` command + endpoint
+- [x] Create `DeleteRole` command + endpoint
+- [x] Register DACs in DI container
 
-### Phase 3: User-Role Assignment
-- [ ] Create `UserRoleReadModel`
-- [ ] Create `GetUserRoles` query + endpoint
-- [ ] Create `AssignRole` command + endpoint
-- [ ] Create `UnassignRole` command + endpoint
+### Phase 3: User-Role Assignment ✅ COMPLETE
+- [x] Create `UserRoleReadModel`
+- [x] Create `GetUserRoles` query + endpoint
+- [x] Create `AssignRoleToUser` command + endpoint
+- [x] Create `UnassignRoleFromUser` command + endpoint
 
 ### Phase 4: Seed Data & Testing
 - [ ] Create migration for additional roles

@@ -54,6 +54,35 @@ public sealed class User : AuditableEntity
     }
 
     /// <summary>
+    /// Creates a new user manually (admin-created with optional local password).
+    /// </summary>
+    public static User CreateManual(
+        string displayName,
+        string email,
+        string? contactNumber,
+        bool localLoginEnabled,
+        byte[]? passwordHash,
+        byte[]? passwordSalt,
+        Guid createdBy)
+    {
+        return new User(Uuid7.NewUuid7())
+        {
+            DisplayName = displayName,
+            Email = email,
+            ContactNumber = contactNumber,
+            IsActive = true,
+            LocalLoginEnabled = localLoginEnabled,
+            PasswordHash = passwordHash,
+            PasswordSalt = passwordSalt,
+            SsoLoginEnabled = false, // SSO linked later when user logs in via SSO
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = createdBy,
+            UpdatedAt = DateTime.UtcNow,
+            UpdatedBy = createdBy
+        };
+    }
+
+    /// <summary>
     /// Rehydrates a user from the database.
     /// </summary>
     public static User Rehydrate(
@@ -151,5 +180,15 @@ public sealed class User : AuditableEntity
         DeletedBy = null;
         IsActive = true;
         UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void SoftDelete(Guid deletedBy)
+    {
+        IsDeleted = true;
+        DeletedAt = DateTime.UtcNow;
+        DeletedBy = deletedBy;
+        IsActive = false;
+        UpdatedAt = DateTime.UtcNow;
+        UpdatedBy = deletedBy;
     }
 }
