@@ -1,6 +1,3 @@
-Here is the **"Over-Engineered" System Architecture Document (v2.0)**.
-
-I have rewritten this specifically for **AI Context Injection**. When you start a new chat session with me or another LLM (ChatGPT, Claude, etc.), pasting this document will force the model to adhere to your strict strict business logic, specifically the **Platinum Hardened Schema v1.1**.
 
 ***
 

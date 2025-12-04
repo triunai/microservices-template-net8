@@ -18,4 +18,22 @@ public static class TaskAllocationConstants
             SupportPic, SupportBackup
         };
     }
+    public static class Modules
+    {
+        public const string TaskAllocation = "TASK_ALLOCATION";
+    }
+
+    public static class SubModules
+    {
+        public const string MembersDist = "MEMBERS_DIST";
+        public const string ProjectAlloc = "PROJECT_ALLOC";
+    }
+
+    public static class Actions
+    {
+        public const string View = "VIEW";
+        public const string Insert = "INSERT";
+        public const string Edit = "EDIT";
+        public const string Delete = "DELETE";
+    }
 }

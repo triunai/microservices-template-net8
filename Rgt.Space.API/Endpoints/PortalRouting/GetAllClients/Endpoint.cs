@@ -19,6 +19,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
             s.Description = "Retrieves all active clients for portal navigation";
             s.Response(200, "List of clients returned successfully");
         });
+        Tags("Client Management");
     }
 
     public override async Task HandleAsync(CancellationToken ct)

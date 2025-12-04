@@ -173,6 +173,62 @@ public sealed class UserReadDac : IUserReadDac
         }, ct);
     }
 
+    public async Task<UserReadModel?> GetByEmailAnyAsync(string email, CancellationToken ct)
+    {
+        var pipeline = GetPipeline();
+        var connectionString = await _connFactory.GetConnectionStringAsync(ct);
+        
+        return await pipeline.ExecuteAsync(async token =>
+        {
+            await using var conn = new NpgsqlConnection(connectionString);
+            await conn.OpenAsync(token);
+
+            var sql = @"
+                SELECT
+                    id,
+                    display_name,
+                    email,
+                    contact_number,
+                    is_active,
+                    local_login_enabled,
+                    sso_login_enabled,
+                    sso_provider,
+                    external_id,
+                    last_login_at,
+                    last_login_provider,
+                    created_at,
+                    created_by,
+                    updated_at,
+                    updated_by
+                FROM users
+                WHERE email = @Email"; // Intentionally ignoring is_deleted
+
+            var result = await conn.QuerySingleOrDefaultAsync<_UserRow>(
+                sql,
+                new { Email = email },
+                commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+
+            if (result is null) return null;
+
+            return new UserReadModel(
+                result.id,
+                result.display_name,
+                result.email,
+                result.contact_number,
+                result.is_active,
+                result.local_login_enabled,
+                result.sso_login_enabled,
+                result.sso_provider,
+                result.external_id,
+                result.last_login_at,
+                result.last_login_provider,
+                result.created_at,
+                result.created_by,
+                result.updated_at,
+                result.updated_by);
+        }, ct);
+    }
+
     public async Task<UserReadModel?> GetByExternalIdAsync(string provider, string externalId, CancellationToken ct)
     {
         var pipeline = GetPipeline();

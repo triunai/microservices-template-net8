@@ -1,4 +1,5 @@
 using Rgt.Space.Core.Domain.Primitives;
+using Rgt.Space.Core.Utilities; // Assuming Uuid7 is here, checking file location first might be safer but standard pattern suggests Utilities or Primitives
 
 namespace Rgt.Space.Core.Domain.Entities.Identity;
 
@@ -36,7 +37,8 @@ public sealed class User : AuditableEntity
         string displayName, 
         string provider)
     {
-        return new User(Guid.NewGuid())
+        // Use UUIDv7 for time-ordered IDs
+        return new User(Uuid7.NewUuid7())
         {
             ExternalId = externalId,
             Email = email,
@@ -131,5 +133,23 @@ public sealed class User : AuditableEntity
         IsActive = isActive;
         UpdatedAt = DateTime.UtcNow;
         UpdatedBy = updatedBy;
+    }
+
+    public void LinkSso(string provider, string externalId, string ssoEmail)
+    {
+        SsoProvider = provider;
+        ExternalId = externalId;
+        SsoEmail = ssoEmail;
+        SsoLoginEnabled = true;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void Reactivate()
+    {
+        IsDeleted = false;
+        DeletedAt = null;
+        DeletedBy = null;
+        IsActive = true;
+        UpdatedAt = DateTime.UtcNow;
     }
 }

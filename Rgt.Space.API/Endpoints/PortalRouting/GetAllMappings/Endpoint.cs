@@ -19,6 +19,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
             s.Description = "Retrieves all routing URL mappings for admin console view";
             s.Response(200, "List of mappings returned successfully");
         });
+        Tags("Portal Routing");
     }
 
     public override async Task HandleAsync(CancellationToken ct)

@@ -19,6 +19,7 @@ public sealed class Endpoint(IMediator mediator, Rgt.Space.Core.Abstractions.Ide
             s.Response(204, "Mapping deleted successfully");
             s.Response(404, "Mapping not found");
         });
+        Tags("Portal Routing");
     }
 
     public override async Task HandleAsync(CancellationToken ct)

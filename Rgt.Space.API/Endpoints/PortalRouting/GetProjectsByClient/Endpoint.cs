@@ -20,6 +20,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
             s.Response(200, "List of projects returned successfully");
             s.Response(404, "Client not found");
         });
+        Tags("Client Management");
     }
 
     public override async Task HandleAsync(CancellationToken ct)

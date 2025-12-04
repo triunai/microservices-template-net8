@@ -38,9 +38,12 @@
         
         // ===== Portal Routing Errors =====
         public const string ROUTING_URL_ALREADY_EXISTS = "ROUTING_URL_ALREADY_EXISTS";
+        public const string ROUTING_CLIENT_CODE_EXISTS = "ROUTING_CLIENT_CODE_EXISTS";
         public const string PROJECT_NOT_FOUND = "PROJECT_NOT_FOUND";
+        public const string CLIENT_NOT_FOUND = "CLIENT_NOT_FOUND";
         public const string INVALID_POSITION_CODE = "INVALID_POSITION_CODE";
         public const string ASSIGNMENT_NOT_FOUND = "ASSIGNMENT_NOT_FOUND";
+        public const string CLIENT_HAS_PROJECTS = "CLIENT_HAS_PROJECTS";
         
         /// <summary>
         /// Determines if an error code represents a validation error.
@@ -123,8 +126,11 @@
                 
                 // Portal Routing
                 ROUTING_URL_ALREADY_EXISTS => 409,
+                ROUTING_CLIENT_CODE_EXISTS => 409,
                 PROJECT_NOT_FOUND => 404,
+                CLIENT_NOT_FOUND => 404,
                 ASSIGNMENT_NOT_FOUND => 404,
+                CLIENT_HAS_PROJECTS => 409,
 
                 // 500 Internal Server Error (default)
                 _ => 500
@@ -170,8 +176,11 @@
                 
                 // Portal Routing
                 ROUTING_URL_ALREADY_EXISTS => "Routing URL Already Exists",
+                ROUTING_CLIENT_CODE_EXISTS => "Client Code Already Exists",
                 PROJECT_NOT_FOUND => "Project Not Found",
+                CLIENT_NOT_FOUND => "Client Not Found",
                 ASSIGNMENT_NOT_FOUND => "Assignment Not Found",
+                CLIENT_HAS_PROJECTS => "Client Has Active Projects",
 
                 _ => "An Error Occurred"
             };

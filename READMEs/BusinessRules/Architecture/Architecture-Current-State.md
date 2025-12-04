@@ -97,10 +97,10 @@ Permissions are derived via a strictly ordered hierarchy.
 2.  **Resource:** The Entity (e.g., `ProjectDetail`).
 3.  **Action:** The Verb (e.g., `View`, `Edit`, `Delete`).
 4.  **Permission Slug:** The Cross-Product.
-    *   **Format:** `UPPER_SNAKE_CASE` (e.g., `PROJECTS_EDIT`, `CLIENT_NAV_VIEW`).
-    *   **NOT** Dot-Notation.
-    *   **Generation:** `Permissions = Resources × Actions` (automatic cross-product).
-    *   **Example:** Resource "CLIENT_NAV" × Action "VIEW" = Permission "CLIENT_NAV_VIEW".
+    *   **Format:** `DOT.NOTATION` (e.g., `PROJECTS.DETAIL.EDIT`, `CLIENT.NAV.VIEW`).
+    *   **Why:** Compatible with FastEndpoints and frontend `Protect` components.
+    *   **Generation:** `Module.SubModule.Action`.
+    *   **Example:** Module "TASK_ALLOCATION" + SubModule "MEMBERS_DIST" + Action "VIEW" = `TASK_ALLOCATION.MEMBERS_DIST.VIEW`.
 
 ### 3.2 Global Roles
 *   **Definition:** Roles are defined at the **System Level**.

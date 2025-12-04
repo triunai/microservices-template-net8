@@ -72,6 +72,17 @@ try
     // Add HttpContextAccessor (required for audit logging)
     builder.Services.AddHttpContextAccessor();
 
+    // Add CORS
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("AllowAll", policy =>
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        });
+    });
+
     // Add Authentication with JWT Bearer (RSA-SHA256 via OIDC Discovery)
     builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
@@ -143,14 +154,28 @@ try
             {
                 OnTokenValidated = async context =>
                 {
+                    // DEBUG: Log all claims to see what we are actually getting
+                    var claims = context.Principal?.Claims.Select(c => $"{c.Type}: {c.Value}").ToList();
+                    var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                    logger.LogInformation("SSO Token Validated. Claims: {Claims}", string.Join(", ", claims ?? new List<string>()));
+
                     // Extract claims from the validated token
-                    var subject = context.Principal?.FindFirst("sub")?.Value;
-                    var email = context.Principal?.FindFirst("email")?.Value;
-                    var name = context.Principal?.FindFirst("name")?.Value ?? email;
+                    // Try standard short names first, then fallback to SOAP/XML names if needed
+                    var subject = context.Principal?.FindFirst("sub")?.Value 
+                                  ?? context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                                  
+                    var email = context.Principal?.FindFirst("email")?.Value 
+                                ?? context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+                                
+                    var name = context.Principal?.FindFirst("name")?.Value 
+                               ?? context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value 
+                               ?? email;
+                               
                     var issuer = context.Principal?.FindFirst("iss")?.Value;
 
                     if (string.IsNullOrEmpty(subject) || string.IsNullOrEmpty(email))
                     {
+                        logger.LogError("Token is missing required claims. Sub: {Sub}, Email: {Email}", subject, email);
                         context.Fail("Token is missing required claims (sub, email)");
                         return;
                     }
@@ -174,8 +199,6 @@ try
                     catch (Exception ex)
                     {
                         // Log the error but don't fail authentication (user might already exist)
-                        var logger = context.HttpContext.RequestServices
-                            .GetRequiredService<ILogger<Program>>();
                         logger.LogError(ex, "Failed to sync user from SSO. Subject: {Subject}, Email: {Email}", subject, email);
 
                         // Don't fail auth - user might already be provisioned
@@ -296,6 +319,9 @@ try
     
     // 4. Rate limit info headers (add rate limit info to all responses)
     app.UseMiddleware<RateLimitHeadersMiddleware>();
+
+    // 4.5 CORS (Must be before Auth)
+    app.UseCors("AllowAll");
     
     // 5. Serilog request logging (logs HTTP requests with correlation ID)
     app.UseSerilogRequestLogging(options =>
@@ -313,6 +339,10 @@ try
     
     // 6. Authentication & Authorization (validates JWT tokens and checks permissions)
     app.UseAuthentication();
+    
+    // 6.1 Load Permissions from DB (Must be after AuthN and before AuthZ)
+    app.UseMiddleware<PermissionLoadingMiddleware>();
+    
     app.UseAuthorization();
     
     // 7. FastEndpoints mapping (includes built-in exception handling)

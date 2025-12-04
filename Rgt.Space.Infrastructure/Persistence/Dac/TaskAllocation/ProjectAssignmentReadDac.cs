@@ -124,4 +124,111 @@ public sealed class ProjectAssignmentReadDac : IProjectAssignmentReadDac
             return list;
         }, ct);
     }
+    public async Task<(IReadOnlyList<ProjectAssignmentReadModel> Items, int TotalCount)> GetMatrixAsync(
+        int page, 
+        int pageSize, 
+        Guid? clientId, 
+        string? search, 
+        CancellationToken ct)
+    {
+        var pipeline = GetPipeline();
+        var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
+
+        return await pipeline.ExecuteAsync(async token =>
+        {
+            await using var conn = new NpgsqlConnection(connString);
+            
+            // CTE Strategy:
+            // 1. visible_projects: Filter projects based on criteria (and future scoping)
+            // 2. total_count: Count total matching projects
+            // 3. paged_projects: Apply pagination to project IDs
+            // 4. Final Select: Join back to get details and assignments
+            
+            const string sql = @"
+                WITH visible_projects AS (
+                    SELECT p.id 
+                    FROM projects p
+                    JOIN clients c ON p.client_id = c.id
+                    WHERE p.is_deleted = FALSE 
+                      AND c.is_deleted = FALSE
+                      AND (@ClientId IS NULL OR p.client_id = @ClientId)
+                      AND (@Search IS NULL OR p.name ILIKE @Search OR c.name ILIKE @Search)
+                ),
+                total_count AS (
+                    SELECT COUNT(*) AS cnt FROM visible_projects
+                ),
+                paged_projects AS (
+                    SELECT p.id 
+                    FROM visible_projects vp
+                    JOIN projects p ON vp.id = p.id
+                    JOIN clients c ON p.client_id = c.id
+                    ORDER BY c.name, p.name -- Sort by Client Name then Project Name
+                    OFFSET @Offset LIMIT @Limit
+                )
+                SELECT 
+                    p.id AS ProjectId, 
+                    p.name AS ProjectName, 
+                    p.code AS ProjectCode,
+                    c.id AS ClientId, 
+                    c.name AS ClientName,
+                    u.id AS UserId, 
+                    u.display_name AS UserName, 
+                    pa.position_code AS PositionCode,
+                    tc.cnt AS TotalCount
+                FROM paged_projects pp
+                CROSS JOIN total_count tc
+                JOIN projects p ON pp.id = p.id
+                JOIN clients c ON p.client_id = c.id
+                LEFT JOIN project_assignments pa ON p.id = pa.project_id AND pa.is_deleted = FALSE
+                LEFT JOIN users u ON pa.user_id = u.id AND u.is_active = TRUE
+                ORDER BY c.name, p.name, pa.position_code";
+
+            var offset = (page - 1) * pageSize;
+            var p = new
+            {
+                Offset = offset,
+                Limit = pageSize,
+                ClientId = clientId,
+                Search = string.IsNullOrWhiteSpace(search) ? null : $"%{search}%"
+            };
+
+            // We need to capture TotalCount from the first row (if any)
+            int totalCount = 0;
+            
+            // Use a custom DTO for the raw query result to handle the extra TotalCount column
+            var rawResults = await conn.QueryAsync<_MatrixRow>(sql, p);
+            var list = rawResults.AsList();
+
+            if (list.Count > 0)
+            {
+                totalCount = (int)list[0].TotalCount;
+            }
+
+            // Map back to ReadModel
+            var readModels = list.Select(r => new ProjectAssignmentReadModel(
+                r.ProjectId,
+                r.ProjectName,
+                r.ProjectCode,
+                r.ClientId,
+                r.ClientName,
+                r.UserId,
+                r.UserName,
+                r.PositionCode
+            )).ToList();
+
+            return (readModels, totalCount);
+        }, ct);
+    }
+
+    // Private DTO for raw query result including TotalCount
+    private sealed record _MatrixRow(
+        Guid ProjectId,
+        string ProjectName,
+        string ProjectCode,
+        Guid ClientId,
+        string ClientName,
+        Guid? UserId,
+        string? UserName,
+        string? PositionCode,
+        long TotalCount);
 }

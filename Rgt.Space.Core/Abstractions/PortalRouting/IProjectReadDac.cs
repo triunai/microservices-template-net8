@@ -7,4 +7,5 @@ public interface IProjectReadDac
     Task<ProjectReadModel?> GetByIdAsync(Guid projectId, CancellationToken ct);
     Task<IReadOnlyList<ProjectReadModel>> GetAllAsync(CancellationToken ct);
     Task<IReadOnlyList<ProjectReadModel>> GetByClientIdAsync(Guid clientId, CancellationToken ct);
+    Task<ProjectReadModel?> GetByClientAndCodeAsync(Guid clientId, string code, CancellationToken ct);
 }

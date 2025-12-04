@@ -17,8 +17,8 @@ This document serves as the **Single Source of Truth** for the Frontend AI/Devel
 
 ### The Flow
 1.  **Login (Enforced Context):**
-    *   **Goal:** This application is the **RGTSPACE ERP**. It must always log in to the `RGTSPACE` tenant.
-    *   **Action:** Always pass `acr_values=tenant:RGTSPACE` (or `tenant=RGTSPACE`) when redirecting to the SSO Broker.
+    *   **Goal:** This application is the **RGTSPACE ERP**. It must always log in to the `RGT_SPACE_PORTAL` tenant.
+    *   **Action:** Always pass `acr_values=tenant:RGT_SPACE_PORTAL` (or `tenant=RGT_SPACE_PORTAL`) when redirecting to the SSO Broker.
     *   **Result:** The user logs in as a System Admin/Employee of RGT Space, granting access to the "God View" dashboard.
     *   **Note:** Do not implement tenant switching UI for this phase.
 2.  **Callback:** Receive `access_token` (JWT) and `refresh_token`.
@@ -30,7 +30,7 @@ This document serves as the **Single Source of Truth** for the Frontend AI/Devel
 *   **Refresh:** On `401 Unauthorized`, use the `refresh_token` against the SSO Broker.
 *   **X-Tenant Header (Critical):**
     *   **Rule:** For ALL requests to the **SSO Broker API** (e.g., Refresh, Logout), you **MUST** include the `X-Tenant` header matching the current context.
-    *   **Example:** `X-Tenant: RGTSPACE`
+    *   **Example:** `X-Tenant: RGT_SPACE_PORTAL`
     *   **Note:** The Portal API (ERP) reads the `tid` from the JWT, but the SSO Broker relies on this header.
 
 ---
@@ -87,14 +87,30 @@ This document serves as the **Single Source of Truth** for the Frontend AI/Devel
         ]
         ```
 
+### 🌐 Portal Routing (Clients & Projects)
+*   **GET** `/api/v1/portal-routing/clients`
+    *   **Purpose:** List all clients (for navigation/filtering).
+*   **GET** `/api/v1/portal-routing/clients/{clientId}/projects`
+    *   **Purpose:** List projects for a specific client.
+*   **GET** `/api/v1/portal-routing/mappings`
+    *   **Purpose:** List all routing mappings (God View list).
+
 ### 🧩 Task Allocation
 *   **GET** `/api/v1/task-allocation/projects/{projectId}`
     *   **Purpose:** Get assignments for a specific project.
+    *   **UI Logic:** The API returns a list of *existing* assignments. The Frontend **MUST** map these to the 6 fixed slots (Tech PIC, etc.) and render "Vacant" for any missing slots.
 *   **POST** `/api/v1/task-allocation/assign`
     *   **Purpose:** Assign a user to a position.
     *   **Payload:** `{ "projectId": "...", "userId": "...", "positionCode": "TECH_PIC" }`
-*   **POST** `/api/v1/task-allocation/unassign`
-    *   **Purpose:** Remove a user.
+*   **DELETE** `/api/v1/projects/{projectId}/assignments/{userId}/{positionCode}`
+    *   **Purpose:** Remove a user (Unassign).
+    *   **Note:** This uses route parameters, not a JSON body.
+
+### 👤 Identity (Users)
+*   **GET** `/api/v1/users`
+    *   **Purpose:** Get list of users (for dropdowns).
+    *   **Params:** `?searchTerm=...` (Optional)
+    *   **Note:** The API automatically filters out "Zombie" (inactive) users by default.
 
 ---
 

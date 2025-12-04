@@ -74,6 +74,13 @@ public sealed class UserWriteDac : IUserWriteDac
                 email = @Email,
                 contact_number = @ContactNumber,
                 is_active = @IsActive,
+                sso_login_enabled = @SsoLoginEnabled,
+                sso_provider = @SsoProvider,
+                external_id = @ExternalId,
+                sso_email = @SsoEmail,
+                is_deleted = @IsDeleted,
+                deleted_at = @DeletedAt,
+                deleted_by = @DeletedBy,
                 updated_at = @UpdatedAt,
                 updated_by = @UpdatedBy
             WHERE id = @Id;";
@@ -85,6 +92,13 @@ public sealed class UserWriteDac : IUserWriteDac
             user.Email,
             user.ContactNumber,
             user.IsActive,
+            user.SsoLoginEnabled,
+            user.SsoProvider,
+            user.ExternalId,
+            user.SsoEmail,
+            user.IsDeleted,
+            user.DeletedAt,
+            user.DeletedBy,
             user.UpdatedAt,
             user.UpdatedBy
         });

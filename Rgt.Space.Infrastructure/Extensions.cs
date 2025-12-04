@@ -152,6 +152,8 @@ namespace Rgt.Space.Infrastructure
             services.AddScoped<Core.Abstractions.PortalRouting.IProjectReadDac, Persistence.Dac.PortalRouting.ProjectReadDac>();
             services.AddScoped<Core.Abstractions.PortalRouting.IClientProjectMappingReadDac, Persistence.Dac.PortalRouting.ClientProjectMappingReadDac>();
             services.AddScoped<Core.Abstractions.PortalRouting.IClientProjectMappingWriteDac, Persistence.Dac.PortalRouting.ClientProjectMappingWriteDac>();
+            services.AddScoped<Core.Abstractions.PortalRouting.IClientWriteDac, Persistence.Dac.PortalRouting.ClientWriteDac>();
+            services.AddScoped<Core.Abstractions.PortalRouting.IProjectWriteDac, Persistence.Dac.PortalRouting.ProjectWriteDac>();
             
             // Register Task Allocation DACs
             services.AddScoped<Core.Abstractions.TaskAllocation.IProjectAssignmentReadDac, Persistence.Dac.TaskAllocation.ProjectAssignmentReadDac>();

@@ -10,7 +10,7 @@ public sealed record ProjectAssignmentReadModel(
     string ProjectCode,
     Guid ClientId,
     string ClientName,
-    Guid UserId,
-    string UserName,
-    string PositionCode
+    Guid? UserId,
+    string? UserName,
+    string? PositionCode
 );

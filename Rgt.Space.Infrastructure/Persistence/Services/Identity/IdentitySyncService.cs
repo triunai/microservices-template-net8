@@ -33,12 +33,41 @@ public sealed class IdentitySyncService : IIdentitySyncService
         _logger.LogDebug("Syncing user from SSO. Provider: {Provider}, ExternalId: {ExternalId}, Email: {Email}",
             provider, externalId, email);
 
-        // Try to find existing user by external ID
+        // 1. Try to find by External ID (Already Linked)
         var existingUserReadModel = await _userRead.GetByExternalIdAsync(provider, externalId, ct);
 
         if (existingUserReadModel is null)
         {
-            // User doesn't exist - create new (JIT Provisioning)
+            // 2. Try to find by Email (Pre-seeded, Legacy, or Deleted)
+            // We use GetByEmailAnyAsync to find even deleted users to prevent unique constraint violations
+            existingUserReadModel = await _userRead.GetByEmailAnyAsync(email, ct);
+
+            if (existingUserReadModel is not null)
+            {
+                _logger.LogInformation("User found by email (Active or Deleted). Linking/Reactivating now. UserId: {UserId}", existingUserReadModel.Id);
+                
+                var userEntity = await _userWrite.GetByIdAsync(existingUserReadModel.Id, ct);
+                if (userEntity != null)
+                {
+                    // If user was deleted, reactivate them
+                    if (userEntity.IsDeleted)
+                    {
+                        _logger.LogInformation("Reactivating deleted user {UserId}", userEntity.Id);
+                        userEntity.Reactivate();
+                    }
+
+                    // Link the account
+                    userEntity.LinkSso(provider, externalId, email);
+                    userEntity.UpdateFromSso(displayName, email);
+                    userEntity.UpdateLastLogin(provider);
+                    
+                    await _userWrite.UpdateAsync(userEntity, ct);
+                    await _userWrite.UpdateLastLoginAsync(userEntity.Id, provider, ct);
+                    return;
+                }
+            }
+
+            // 3. User doesn't exist at all - create new (JIT Provisioning)
             _logger.LogInformation("Creating new user from SSO. Provider: {Provider}, Email: {Email}", provider, email);
 
             var newUser = User.CreateFromSso(
@@ -53,7 +82,7 @@ public sealed class IdentitySyncService : IIdentitySyncService
         }
         else
         {
-            // User exists - update their info if needed
+            // 4. User exists and is linked - update info
             _logger.LogDebug("User already exists. UserId: {UserId}. Fetching full entity for update.", existingUserReadModel.Id);
 
             var userEntity = await _userWrite.GetByIdAsync(existingUserReadModel.Id, ct);
@@ -82,27 +111,42 @@ public sealed class IdentitySyncService : IIdentitySyncService
         string displayName,
         CancellationToken ct = default)
     {
-        // Reuse the existing sync logic (which is void) but modify it to return ID
-        // Or better, refactor SyncUserFromSsoAsync to return Guid and call it here.
-        
-        // For now, let's just duplicate the logic slightly to ensure we return the ID
-        // In a real refactor, we'd merge them.
-        
+        // 1. Try to find by External ID
         var existingUserReadModel = await _userRead.GetByExternalIdAsync(provider, externalId, ct);
 
         if (existingUserReadModel is null)
         {
-            // Create New
+            // 2. Try to find by Email (Any status)
+            existingUserReadModel = await _userRead.GetByEmailAnyAsync(email, ct);
+
+            if (existingUserReadModel != null)
+            {
+                // Link existing user
+                var userEntity = await _userWrite.GetByIdAsync(existingUserReadModel.Id, ct);
+                if (userEntity != null)
+                {
+                    if (userEntity.IsDeleted)
+                    {
+                        userEntity.Reactivate();
+                    }
+
+                    userEntity.LinkSso(provider, externalId, email);
+                    userEntity.UpdateFromSso(displayName, email);
+                    userEntity.UpdateLastLogin(provider);
+                    await _userWrite.UpdateAsync(userEntity, ct);
+                    await _userWrite.UpdateLastLoginAsync(userEntity.Id, provider, ct);
+                    return userEntity.Id;
+                }
+            }
+
+            // 3. Create New
             var newUser = User.CreateFromSso(externalId, email, displayName, provider);
             await _userWrite.CreateAsync(newUser, ct);
             return newUser.Id;
         }
         else
         {
-            // Update Existing (Fire and forget the update to keep login fast? No, safer to await)
-            // We need to return the ID immediately, so let's just return it and queue the update?
-            // For safety, let's do the update.
-            
+            // 4. Update Existing
             var userEntity = await _userWrite.GetByIdAsync(existingUserReadModel.Id, ct);
             if (userEntity != null)
             {

@@ -21,6 +21,7 @@ public sealed class Endpoint(IMediator mediator, Rgt.Space.Core.Abstractions.Ide
             s.Response(400, "Validation failure or invalid input");
             s.Response(404, "Mapping not found");
         });
+        Tags("Portal Routing");
     }
 
     public override async Task HandleAsync(UpdateMappingRequest req, CancellationToken ct)
