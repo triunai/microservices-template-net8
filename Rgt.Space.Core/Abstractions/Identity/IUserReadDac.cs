@@ -11,4 +11,11 @@ public interface IUserReadDac
     Task<IReadOnlyList<UserReadModel>> GetAllAsync(CancellationToken ct);
     Task<IReadOnlyList<UserReadModel>> SearchAsync(string searchTerm, CancellationToken ct);
     Task<IReadOnlyList<UserPermissionReadModel>> GetPermissionsAsync(Guid userId, CancellationToken ct);
+    
+    /// <summary>
+    /// Retrieves user credentials for login verification.
+    /// Only returns active, non-deleted users with local login enabled.
+    /// </summary>
+    Task<UserCredentialsReadModel?> GetCredentialsByEmailAsync(string email, CancellationToken ct);
 }
+

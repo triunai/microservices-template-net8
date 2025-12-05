@@ -142,6 +142,9 @@ namespace Rgt.Space.Infrastructure
             
             // Register Identity Services
             services.AddScoped<Core.Abstractions.Identity.IIdentitySyncService, IdentitySyncService>();
+            
+            // Register Auth Services (JWT Token Generation)
+            services.AddSingleton<Services.Auth.ITokenService, Services.Auth.TokenService>();
 
             // Current User Context
             // TODO: Make this configurable via appsettings (e.g., Auth:EnableMockAuth)

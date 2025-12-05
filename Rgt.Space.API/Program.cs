@@ -83,20 +83,26 @@ try
         });
     });
 
-    // Add Authentication with JWT Bearer (RSA-SHA256 via OIDC Discovery)
-    builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
+    // Add Authentication with DUAL JWT Bearer support:
+    // 1. SSO Broker tokens (RSA-SHA256 via OIDC Discovery)
+    // 2. Local Login tokens (HMAC-SHA256 symmetric)
+    builder.Services.AddAuthentication(options =>
+        {
+            options.DefaultAuthenticateScheme = "MultiScheme";
+            options.DefaultChallengeScheme = "MultiScheme";
+        })
+        .AddJwtBearer("SsoBearer", options =>
         {
             var authConfig = builder.Configuration.GetSection("Auth");
 
-            // Disable claim type mapping to keep claims as-is (e.g. "sub" -> "sub")
+            // Disable claim type mapping to keep claims as-is
             options.MapInboundClaims = false;
 
             // Point to SSO Broker for OIDC Discovery
             options.Authority = authConfig["Authority"];
             options.Audience = authConfig["Audience"];
 
-            // Enable HTTPS metadata discovery (set to false ONLY for localhost dev with self-signed certs)
+            // Enable HTTPS metadata discovery (set to false ONLY for localhost dev)
             options.RequireHttpsMetadata = false; // TODO: Set to true in production
 
             // Token validation parameters
@@ -104,15 +110,13 @@ try
             {
                 ValidateIssuer = true,
                 ValidIssuer = authConfig["Authority"],
-
                 ValidateAudience = true,
                 ValidAudience = authConfig["Audience"],
-
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.FromMinutes(5),
             };
 
-            // DEV ONLY: DIAGNOSTIC - Hardcode the key to bypass Discovery issues
+            // DEV ONLY: Hardcode RSA key to bypass Discovery issues
             if (builder.Environment.IsDevelopment())
             {
                 try 
@@ -120,14 +124,12 @@ try
                     var rsa = System.Security.Cryptography.RSA.Create();
                     rsa.ImportParameters(new System.Security.Cryptography.RSAParameters
                     {
-                        // Values from https://localhost:7012/.well-known/jwks.json
                         Modulus = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes("rNH-ckvzkKRcqAKmb8CDdABZ-4_fUgI-vjSRoDfz-kCDtFdxTD69XvqUGP4NRyPXiSwI3ODh1_iBv-eg1RCBB8iA8eNLHuD5VbeMq4J5_ktCUjAUBQ783cs9R_7RKyLRrlW-Cq0EiZ-Z0I5vyWE9yzCN7Mf1MU2cn4GnAxMsJFlMwNEstbupqZWIgZXqLxrHcXcUpS-zpPkJULI4tDsUTjXMih8hU2ikrb_EltNYi0tcIBV6TfoBEc3OGiz8ao4mZ8UiKLBMwUi00qvQRtGl3xm0idh3sF2sGunIkTlRFtsBzjNpTqcAotyRXTNuQOTExX_dRL8C74eHUwd2J9quQQ"),
                         Exponent = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes("AQAB")
                     });
 
                     var key = new Microsoft.IdentityModel.Tokens.RsaSecurityKey(rsa) { KeyId = "rsa-2025-11-27" };
 
-                    // FORCE THE KEY and DISABLE DISCOVERY
                     options.TokenValidationParameters.IssuerSigningKey = key;
                     options.Configuration = new Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration
                     {
@@ -135,86 +137,154 @@ try
                     };
                     options.Configuration.SigningKeys.Add(key);
                     
-                    Log.Warning("DEV MODE: Using Hardcoded RSA Key for Token Validation to bypass OIDC Discovery.");
+                    Log.Warning("DEV MODE: SsoBearer using Hardcoded RSA Key.");
                 }
                 catch (Exception ex)
                 {
-                    Log.Error(ex, "Failed to configure hardcoded key.");
+                    Log.Error(ex, "Failed to configure SSO hardcoded key.");
                 }
             }
-            else 
-            {
-                // Production or other envs: Use standard discovery
-                // (The previous explicit config manager code was removed for this test, 
-                // but in prod we would just rely on default behavior)
-            }
 
-            // JIT User Provisioning: Sync user from SSO on every token validation
+            // JIT User Provisioning for SSO tokens
             options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
             {
                 OnTokenValidated = async context =>
                 {
-                    // DEBUG: Log all claims to see what we are actually getting
                     var claims = context.Principal?.Claims.Select(c => $"{c.Type}: {c.Value}").ToList();
                     var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
                     logger.LogInformation("SSO Token Validated. Claims: {Claims}", string.Join(", ", claims ?? new List<string>()));
 
-                    // Extract claims from the validated token
-                    // Try standard short names first, then fallback to SOAP/XML names if needed
                     var subject = context.Principal?.FindFirst("sub")?.Value 
                                   ?? context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                                  
                     var email = context.Principal?.FindFirst("email")?.Value 
                                 ?? context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
-                                
                     var name = context.Principal?.FindFirst("name")?.Value 
-                               ?? context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value 
-                               ?? email;
-                               
+                               ?? context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? email;
                     var issuer = context.Principal?.FindFirst("iss")?.Value;
 
                     if (string.IsNullOrEmpty(subject) || string.IsNullOrEmpty(email))
                     {
-                        logger.LogError("Token is missing required claims. Sub: {Sub}, Email: {Email}", subject, email);
+                        logger.LogError("SSO Token missing required claims. Sub: {Sub}, Email: {Email}", subject, email);
                         context.Fail("Token is missing required claims (sub, email)");
                         return;
                     }
 
-                    // Determine provider from issuer (e.g., "https://localhost:7012" -> "sso_broker")
                     var provider = issuer?.Contains("localhost") == true ? "sso_broker" : "azuread";
 
                     try
                     {
-                        // Resolve Identity Sync Service and sync the user
                         var syncService = context.HttpContext.RequestServices
                             .GetRequiredService<Rgt.Space.Core.Abstractions.Identity.IIdentitySyncService>();
-
-                        // Sync user and get Local ID
                         var localUserId = await syncService.SyncOrGetUserAsync(provider, subject, email, name!, context.HttpContext.RequestAborted);
                         
-                        // Attach Local ID to Principal
                         var claimsIdentity = context.Principal?.Identity as System.Security.Claims.ClaimsIdentity;
                         claimsIdentity?.AddClaim(new System.Security.Claims.Claim("x-local-user-id", localUserId.ToString()));
                     }
                     catch (Exception ex)
                     {
-                        // Log the error but don't fail authentication (user might already exist)
                         logger.LogError(ex, "Failed to sync user from SSO. Subject: {Subject}, Email: {Email}", subject, email);
-
-                        // Don't fail auth - user might already be provisioned
-                        // context.Fail() would reject valid tokens which is worse than missing a sync
                     }
                 },
-
                 OnAuthenticationFailed = context =>
                 {
-                    var logger = context.HttpContext.RequestServices
-                        .GetRequiredService<ILogger<Program>>();
-                    logger.LogWarning("JWT Authentication failed: {Exception}", context.Exception.Message);
+                    var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                    logger.LogDebug("SSO Authentication failed: {Exception}", context.Exception.Message);
                     return Task.CompletedTask;
                 }
             };
+        })
+        .AddJwtBearer("LocalBearer", options =>
+        {
+            var localAuthConfig = builder.Configuration.GetSection("LocalAuth");
+
+            // Disable claim type mapping
+            options.MapInboundClaims = false;
+
+            // Local token validation parameters (HMAC-SHA256)
+            options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = localAuthConfig["Issuer"] ?? "rgt-space-portal",
+                
+                ValidateAudience = true,
+                ValidAudience = localAuthConfig["Audience"] ?? "rgt-space-portal-api",
+                
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.FromMinutes(5),
+                
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
+                    System.Text.Encoding.UTF8.GetBytes(
+                        localAuthConfig["SigningKey"] ?? "YourSuperSecretLocalSigningKey_ChangeThisInProduction_MustBe32CharactersLong!")),
+            };
+
+            options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+            {
+                OnTokenValidated = context =>
+                {
+                    var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                    var claims = context.Principal?.Claims.Select(c => $"{c.Type}: {c.Value}").ToList();
+                    logger.LogInformation("Local Token Validated. Claims: {Claims}", string.Join(", ", claims ?? new List<string>()));
+                    
+                    // For local tokens, the "sub" claim IS the local user ID
+                    var userId = context.Principal?.FindFirst("sub")?.Value;
+                    if (!string.IsNullOrEmpty(userId))
+                    {
+                        var claimsIdentity = context.Principal?.Identity as System.Security.Claims.ClaimsIdentity;
+                        claimsIdentity?.AddClaim(new System.Security.Claims.Claim("x-local-user-id", userId));
+                    }
+                    
+                    return Task.CompletedTask;
+                },
+                OnAuthenticationFailed = context =>
+                {
+                    var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                    logger.LogDebug("Local Authentication failed: {Exception}", context.Exception.Message);
+                    return Task.CompletedTask;
+                }
+            };
+        })
+        .AddPolicyScheme("MultiScheme", "SSO or Local", options =>
+        {
+            // Smart scheme selection: Try SSO first, then Local
+            options.ForwardDefaultSelector = context =>
+            {
+                // Check if there's a Bearer token
+                var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+                if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "LocalBearer"; // Default to local if no token
+                }
+
+                // Extract the token
+                var token = authHeader.Substring("Bearer ".Length).Trim();
+                
+                try
+                {
+                    // Peek at the token header to determine type
+                    var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+                    if (handler.CanReadToken(token))
+                    {
+                        var jwt = handler.ReadJwtToken(token);
+                        
+                        // If token has "kid" header, it's from SSO (RSA)
+                        // If issuer is "rgt-space-portal", it's local
+                        var issuer = jwt.Issuer;
+                        if (issuer == "rgt-space-portal")
+                        {
+                            return "LocalBearer";
+                        }
+                    }
+                }
+                catch
+                {
+                    // If we can't parse it, try SSO first
+                }
+
+                return "SsoBearer";
+            };
         });
+
 
     builder.Services.AddAuthorization();
 

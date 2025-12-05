@@ -496,4 +496,58 @@ public sealed class UserReadDac : IUserReadDac
         bool can_insert,
         bool can_edit,
         bool can_delete);
+
+    public async Task<UserCredentialsReadModel?> GetCredentialsByEmailAsync(string email, CancellationToken ct)
+    {
+        var pipeline = GetPipeline();
+        var connectionString = await _connFactory.GetConnectionStringAsync(ct);
+        
+        return await pipeline.ExecuteAsync(async token =>
+        {
+            await using var conn = new NpgsqlConnection(connectionString);
+            await conn.OpenAsync(token);
+
+            // Only return active, non-deleted users with local login enabled
+            var sql = @"
+                SELECT
+                    id,
+                    display_name,
+                    email,
+                    is_active,
+                    local_login_enabled,
+                    password_hash,
+                    password_salt,
+                    password_expiry_at
+                FROM users
+                WHERE email = @Email 
+                  AND is_deleted = FALSE";
+
+            var result = await conn.QuerySingleOrDefaultAsync<_UserCredentialsRow>(
+                sql,
+                new { Email = email },
+                commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+
+            if (result is null) return null;
+
+            return new UserCredentialsReadModel(
+                result.id,
+                result.display_name,
+                result.email,
+                result.is_active,
+                result.local_login_enabled,
+                result.password_hash,
+                result.password_salt,
+                result.password_expiry_at);
+        }, ct);
+    }
+
+    private sealed record _UserCredentialsRow(
+        Guid id,
+        string display_name,
+        string email,
+        bool is_active,
+        bool local_login_enabled,
+        byte[]? password_hash,
+        byte[]? password_salt,
+        DateTime? password_expiry_at);
 }

@@ -7,7 +7,6 @@ namespace Rgt.Space.API.ProblemDetails
     /// <summary>
     /// Factory for creating RFC 7807 ProblemDetails responses enriched with:
     /// - Correlation ID (for request tracing)
-    /// - Tenant ID (for multi-tenant context)
     /// - Error code (for client-side handling)
     /// - Trace ID (for distributed tracing)
     /// </summary>

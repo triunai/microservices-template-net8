@@ -118,6 +118,7 @@ public sealed class DashboardReadDac : IDashboardReadDac
                     WHERE is_deleted = FALSE
                 )
                 SELECT 
+                    pr.id as ProjectId,
                     pr.name as ProjectName, 
                     pr.code as MissingPosition
                 FROM ProjectRequirements pr

@@ -34,6 +34,7 @@
 		<PackageReference Include="Polly.Core" Version="8.6.4" />
 		<PackageReference Include="Polly" Version="8.6.4" />
 		<PackageReference Include="Polly.Extensions" Version="8.6.4" />
+		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.8.0" />
 	</ItemGroup>
 
 	<ItemGroup>

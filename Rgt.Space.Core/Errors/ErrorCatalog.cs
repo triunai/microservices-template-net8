@@ -57,6 +57,12 @@
         public const string ROLE_HAS_USERS = "ROLE_HAS_USERS";
         public const string ROLE_IS_SYSTEM = "ROLE_IS_SYSTEM";
         
+        // ===== Authentication Errors =====
+        public const string INVALID_CREDENTIALS = "INVALID_CREDENTIALS";
+        public const string ACCOUNT_DISABLED = "ACCOUNT_DISABLED";
+        public const string LOCAL_LOGIN_DISABLED = "LOCAL_LOGIN_DISABLED";
+        public const string PASSWORD_EXPIRED = "PASSWORD_EXPIRED";
+        
         /// <summary>
         /// Determines if an error code represents a validation error.
         /// Validation errors return 400 Bad Request.
@@ -155,6 +161,12 @@
                 ROLE_CODE_EXISTS => 409,
                 ROLE_HAS_USERS => 409,
                 ROLE_IS_SYSTEM => 403,
+                
+                // Authentication
+                INVALID_CREDENTIALS => 401,
+                ACCOUNT_DISABLED => 403,
+                LOCAL_LOGIN_DISABLED => 403,
+                PASSWORD_EXPIRED => 403,
 
                 // 500 Internal Server Error (default)
                 _ => 500

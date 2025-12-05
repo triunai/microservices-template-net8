@@ -31,13 +31,15 @@ public sealed record AssignmentDistribution
 
 public sealed record VacantPosition
 {
+    public Guid ProjectId { get; init; }
     public string ProjectName { get; init; } = string.Empty;
     public string MissingPosition { get; init; } = string.Empty;
 
     public VacantPosition() { }
 
-    public VacantPosition(string projectName, string missingPosition)
+    public VacantPosition(Guid projectId, string projectName, string missingPosition)
     {
+        ProjectId = projectId;
         ProjectName = projectName;
         MissingPosition = missingPosition;
     }
