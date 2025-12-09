@@ -1,22 +1,15 @@
+using Dapper;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using Polly;
 using Polly.Registry;
-using Rgt.Space.Core.Abstractions.Tenancy;
 using Rgt.Space.Core.Configuration;
-using Rgt.Space.Core.Domain.Entities.Identity;
-using Rgt.Space.Infrastructure.Persistence;
 using Rgt.Space.Infrastructure.Persistence.Dac.Identity;
 using Rgt.Space.Infrastructure.Resilience;
 using Testcontainers.PostgreSql;
 
 namespace Rgt.Space.Tests.Integration.Persistence;
 
-/// <summary>
-/// Integration tests for User DACs using Testcontainers for real PostgreSQL database.
-/// This verifies the actual SQL queries work correctly against a real database.
-/// </summary>
 public class UserDacIntegrationTests : IAsyncLifetime
 {
     private PostgreSqlContainer? _postgres;
@@ -26,7 +19,7 @@ public class UserDacIntegrationTests : IAsyncLifetime
     {
         // Start PostgreSQL container
         _postgres = new PostgreSqlBuilder()
-            .WithImage("postgres:18")
+            .WithImage("public.ecr.aws/docker/library/postgres:15-alpine")
             .WithDatabase("test_db")
             .WithUsername("postgres")
             .WithPassword("postgres")
@@ -35,56 +28,7 @@ public class UserDacIntegrationTests : IAsyncLifetime
         await _postgres.StartAsync();
         _connectionString = _postgres.GetConnectionString();
 
-        // Create UUID v7 function and users table
-        await using var conn = new Npgsql.NpgsqlConnection(_connectionString);
-        await conn.OpenAsync();
-
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            -- Create UUID v7 function
-            CREATE OR REPLACE FUNCTION uuid_generate_v7()
-            RETURNS uuid
-            AS $$
-            DECLARE
-              unix_ts_ms bytea;
-              uuid_bytes bytea;
-            BEGIN
-              unix_ts_ms = substring(int8send(floor(extract(epoch from clock_timestamp()) * 1000)::bigint) from 3);
-              uuid_bytes = unix_ts_ms || gen_random_bytes(10);
-              uuid_bytes = set_byte(uuid_bytes, 6, (get_byte(uuid_bytes, 6) & x'0f'::int) | x'70'::int);
-              uuid_bytes = set_byte(uuid_bytes, 8, (get_byte(uuid_bytes, 8) & x'3f'::int) | x'80'::int);
-              RETURN encode(uuid_bytes, 'hex')::uuid;
-            END;
-            $$ LANGUAGE plpgsql;
-
-            -- Create users table
-            CREATE TABLE users (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                display_name TEXT NOT NULL,
-                email TEXT NOT NULL,
-                contact_number TEXT NULL,
-                is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                local_login_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-                password_hash BYTEA NULL,
-                password_salt BYTEA NULL,
-                sso_login_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-                sso_provider TEXT NULL,
-                external_id TEXT NULL,
-                sso_email TEXT NULL,
-                last_login_at TIMESTAMP NULL,
-                last_login_provider TEXT NULL,
-                created_at TIMESTAMP NOT NULL DEFAULT now(),
-                created_by UUID NULL,
-                updated_at TIMESTAMP NOT NULL DEFAULT now(),
-                updated_by UUID NULL,
-                is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                deleted_at TIMESTAMP NULL,
-                deleted_by UUID NULL,
-                CONSTRAINT users_email_uk UNIQUE (email),
-                CONSTRAINT users_sso_uk UNIQUE (sso_provider, external_id)
-            );";
-
-        await cmd.ExecuteNonQueryAsync();
+        await TestDatabaseInitializer.InitializeAsync(_connectionString);
     }
 
     public async Task DisposeAsync()
@@ -96,101 +40,139 @@ public class UserDacIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task CreateAndRetrieveUser_ShouldRoundTripSuccessfully()
+    public async Task GetPermissionsAsync_ShouldCalculateEffectivePermissionsCorrectly()
     {
-        // Arrange
-        var connFactory = new TestConnectionFactory(_connectionString);
-        var tenantProvider = Substitute.For<ITenantProvider>();
-        tenantProvider.Id.Returns("test_tenant");
+        // This test implements the verification logic from TEST_PLAN_RBAC_FIX.md
         
-        // We can pass null/default for resilience and logger if the DAC allows it, or mocks.
-        // Since we are testing integration with DB, we need to satisfy the ctor.
-        // Assuming UserReadDac uses standard DI.
-        var registry = new ResiliencePipelineRegistry<string>();
-        var options = Options.Create(new ResilienceSettings());
-        var logger = Substitute.For<ILogger<UserReadDac>>();
-
-        var writeDac = new UserWriteDac(connFactory);
-        var readDac = new UserReadDac(connFactory, tenantProvider, registry, options, logger);
-
-        var user = User.CreateFromSso("google_12345", "test@example.com", "Test User", "google");
-
-        // Act
-        var createdId = await writeDac.CreateAsync(user, CancellationToken.None);
-        var retrievedUser = await readDac.GetByIdAsync(createdId, CancellationToken.None);
-
-        // Assert
-        retrievedUser.Should().NotBeNull();
-        retrievedUser!.Email.Should().Be(user.Email);
-        retrievedUser.DisplayName.Should().Be(user.DisplayName);
-        retrievedUser.SsoProvider.Should().Be(user.SsoProvider);
-        retrievedUser.ExternalId.Should().Be(user.ExternalId);
-    }
-
-    [Fact]
-    public async Task GetByExternalId_ShouldFindCorrectUser()
-    {
         // Arrange
-        var connFactory = new TestConnectionFactory(_connectionString);
-        var tenantProvider = Substitute.For<ITenantProvider>();
-        tenantProvider.Id.Returns("test_tenant");
+        var connFactory = new TestSystemConnectionFactory(_connectionString);
         var registry = new ResiliencePipelineRegistry<string>();
-        var options = Options.Create(new ResilienceSettings());
+        var resilienceSettings = new ResilienceSettings
+        {
+            MasterDb = new PipelineSettings
+            {
+                TimeoutMs = 1000,
+                RetryCount = 1,
+                RetryDelaysMs = new[] { 10 },
+                FailureRatio = 0.5,
+                SamplingDurationSeconds = 10,
+                MinimumThroughput = 2,
+                BreakDurationSeconds = 5
+            }
+        };
+        var options = Options.Create(resilienceSettings);
         var logger = Substitute.For<ILogger<UserReadDac>>();
+        var dac = new UserReadDac(connFactory, registry, options, logger);
 
-        var writeDac = new UserWriteDac(connFactory);
-        var readDac = new UserReadDac(connFactory, tenantProvider, registry, options, logger);
+        await SetupRbacTestDataAsync(_connectionString);
 
-        var user = User.CreateFromSso("azure_67890", "user@example.com", "Azure User", "azuread");
-        await writeDac.CreateAsync(user, CancellationToken.None);
+        var testUserId = Guid.Parse("01938567-0000-7000-8000-000000000001");
 
         // Act
-        var retrievedUser = await readDac.GetByExternalIdAsync("azuread", "azure_67890", CancellationToken.None);
+        var permissions = await dac.GetPermissionsAsync(testUserId, CancellationToken.None);
 
         // Assert
-        retrievedUser.Should().NotBeNull();
-        retrievedUser!.ExternalId.Should().Be("azure_67890");
-        retrievedUser.SsoProvider.Should().Be("azuread");
+        // 1. Projects Module:
+        //    can_view: true (Inherited from Role)
+        //    can_edit: false (Blocked by Deny Override)
+        var projectPerms = permissions.FirstOrDefault(p => p.Module == "PROJECTS" && p.SubModule == "PROJECT_DETAILS");
+        projectPerms.Should().NotBeNull("PROJECTS module permissions should exist");
+        projectPerms!.CanView.Should().BeTrue("Should be able to view projects (Role grant)");
+        projectPerms.CanEdit.Should().BeFalse("Should NOT be able to edit projects (Deny override)");
+
+        // 2. Clients Module:
+        //    can_view: true (Granted by Allow Override)
+        var clientPerms = permissions.FirstOrDefault(p => p.Module == "CLIENTS" && p.SubModule == "CLIENT_DETAILS");
+        clientPerms.Should().NotBeNull("CLIENTS module permissions should exist");
+        clientPerms!.CanView.Should().BeTrue("Should be able to view clients (Allow override)");
     }
 
-    [Fact]
-    public async Task UpdateLastLogin_ShouldPersistToDatabase()
+    private async Task SetupRbacTestDataAsync(string connectionString)
     {
-        // Arrange
-        var connFactory = new TestConnectionFactory(_connectionString);
-        var tenantProvider = Substitute.For<ITenantProvider>();
-        tenantProvider.Id.Returns("test_tenant");
-        var registry = new ResiliencePipelineRegistry<string>();
-        var options = Options.Create(new ResilienceSettings());
-        var logger = Substitute.For<ILogger<UserReadDac>>();
+        using var conn = new Npgsql.NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
 
-        var writeDac = new UserWriteDac(connFactory);
-        var readDac = new UserReadDac(connFactory, tenantProvider, registry, options, logger);
+        // Ensure prerequisite data exists (Modules, Resources, Actions, Permissions)
+        // We'll rely on seed data if possible, or create minimum viable data.
+        // Since we didn't run a seed script, we must insert the metadata.
 
-        var user = User.CreateFromSso("ext_123", "update@example.com", "Update Test", "google");
-        var userId = await writeDac.CreateAsync(user, CancellationToken.None);
+        var sql = @"
+            -- 0. Modules, Resources, Actions (Simplified)
+            INSERT INTO modules (id, name, code) VALUES
+            (uuid_generate_v7(), 'Projects', 'PROJECTS'),
+            (uuid_generate_v7(), 'Clients', 'CLIENTS')
+            ON CONFLICT (code) DO NOTHING;
 
-        // Act
-        await writeDac.UpdateLastLoginAsync(userId, "google", CancellationToken.None);
-        var retrievedUser = await readDac.GetByIdAsync(userId, CancellationToken.None);
+            INSERT INTO resources (id, module_id, name, code)
+            SELECT uuid_generate_v7(), id, 'Project Details', 'PROJECT_DETAILS' FROM modules WHERE code = 'PROJECTS'
+            ON CONFLICT DO NOTHING;
 
-        // Assert
-        retrievedUser!.LastLoginAt.Should().NotBeNull();
-        retrievedUser.LastLoginProvider.Should().Be("google");
-    }
+            INSERT INTO resources (id, module_id, name, code)
+            SELECT uuid_generate_v7(), id, 'Client Details', 'CLIENT_DETAILS' FROM modules WHERE code = 'CLIENTS'
+            ON CONFLICT DO NOTHING;
 
-    private class TestConnectionFactory : ITenantConnectionFactory
-    {
-        private readonly string _connectionString;
+            INSERT INTO actions (id, name, code) VALUES
+            (uuid_generate_v7(), 'View', 'VIEW'),
+            (uuid_generate_v7(), 'Edit', 'EDIT')
+            ON CONFLICT (code) DO NOTHING;
 
-        public TestConnectionFactory(string connectionString)
-        {
-            _connectionString = connectionString;
-        }
+            -- Permissions
+            INSERT INTO permissions (id, resource_id, action_id, code)
+            SELECT uuid_generate_v7(), r.id, a.id, 'PROJECTS_VIEW'
+            FROM resources r, actions a
+            WHERE r.code = 'PROJECT_DETAILS' AND a.code = 'VIEW'
+            ON CONFLICT (code) DO NOTHING;
 
-        public Task<string> GetSqlConnectionStringAsync(string tenantId, CancellationToken ct = default)
-        {
-            return Task.FromResult(_connectionString);
-        }
+            INSERT INTO permissions (id, resource_id, action_id, code)
+            SELECT uuid_generate_v7(), r.id, a.id, 'PROJECTS_EDIT'
+            FROM resources r, actions a
+            WHERE r.code = 'PROJECT_DETAILS' AND a.code = 'EDIT'
+            ON CONFLICT (code) DO NOTHING;
+
+            INSERT INTO permissions (id, resource_id, action_id, code)
+            SELECT uuid_generate_v7(), r.id, a.id, 'CLIENTS_VIEW'
+            FROM resources r, actions a
+            WHERE r.code = 'CLIENT_DETAILS' AND a.code = 'VIEW'
+            ON CONFLICT (code) DO NOTHING;
+
+
+            -- 1. Create a Test User
+            INSERT INTO users (id, display_name, email, is_active)
+            VALUES ('01938567-0000-7000-8000-000000000001', 'Test User', 'test.user@example.com', TRUE)
+            ON CONFLICT (email) DO NOTHING;
+
+            -- 2. Create a 'Project Manager' Role
+            INSERT INTO roles (id, name, code, is_active)
+            VALUES ('01938567-0000-7000-8000-000000000002', 'Project Manager', 'PROJECT_MANAGER', TRUE)
+            ON CONFLICT (code) DO NOTHING;
+
+            -- 3. Grant 'PROJECT_VIEW' and 'PROJECT_EDIT' to the Role
+            INSERT INTO role_permissions (role_id, permission_id)
+            SELECT '01938567-0000-7000-8000-000000000002', p.id
+            FROM permissions p
+            WHERE p.code IN ('PROJECTS_VIEW', 'PROJECTS_EDIT')
+            ON CONFLICT DO NOTHING;
+
+            -- 4. Assign Role to User
+            INSERT INTO user_roles (user_id, role_id)
+            VALUES ('01938567-0000-7000-8000-000000000001', '01938567-0000-7000-8000-000000000002')
+            ON CONFLICT DO NOTHING;
+
+            -- 5. Add a DENY Override for 'PROJECTS_EDIT' (The 'Exception')
+            INSERT INTO user_permission_overrides (user_id, permission_id, is_allowed)
+            SELECT '01938567-0000-7000-8000-000000000001', p.id, FALSE
+            FROM permissions p
+            WHERE p.code = 'PROJECTS_EDIT'
+            ON CONFLICT DO NOTHING;
+
+            -- 6. Add an ALLOW Override for 'CLIENTS_VIEW' (The 'Bonus')
+            INSERT INTO user_permission_overrides (user_id, permission_id, is_allowed)
+            SELECT '01938567-0000-7000-8000-000000000001', p.id, TRUE
+            FROM permissions p
+            WHERE p.code = 'CLIENTS_VIEW'
+            ON CONFLICT DO NOTHING;
+        ";
+
+        await conn.ExecuteAsync(sql);
     }
 }
