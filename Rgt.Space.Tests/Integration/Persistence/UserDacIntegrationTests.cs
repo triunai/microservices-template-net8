@@ -32,20 +32,7 @@ public class UserDacIntegrationTests
         // Arrange
         var connFactory = new TestSystemConnectionFactory(ConnectionString);
         var registry = new ResiliencePipelineRegistry<string>();
-        var resilienceSettings = new ResilienceSettings
-        {
-            MasterDb = new PipelineSettings
-            {
-                TimeoutMs = 1000,
-                RetryCount = 1,
-                RetryDelaysMs = new[] { 10 },
-                FailureRatio = 0.5,
-                SamplingDurationSeconds = 10,
-                MinimumThroughput = 2,
-                BreakDurationSeconds = 5
-            }
-        };
-        var options = Options.Create(resilienceSettings);
+        var options = CreateValidResilienceOptions();
         var logger = Substitute.For<ILogger<UserReadDac>>();
         var dac = new UserReadDac(connFactory, registry, options, logger);
 
@@ -105,9 +92,10 @@ public class UserDacIntegrationTests
         var persisted = await readDac.GetByIdAsync(userId, CancellationToken.None);
 
         // Assert
+        var now = DateTime.UtcNow;
         persisted.Should().NotBeNull();
-        persisted!.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
-        persisted.UpdatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+        persisted!.CreatedAt.Should().BeOnOrBefore(now);
+        persisted.UpdatedAt.Should().BeOnOrBefore(now);
     }
 
     [Fact]

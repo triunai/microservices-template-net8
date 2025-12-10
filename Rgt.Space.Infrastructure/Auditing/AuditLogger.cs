@@ -81,7 +81,14 @@ public sealed class AuditLogger : IAuditLogger, IHostedService
         _logger.LogInformation("Stopping audit logger and flushing pending entries...");
         
         // Signal shutdown
-        _channel.Writer.Complete();
+        try
+        {
+            _channel.Writer.Complete();
+        }
+        catch (ChannelClosedException)
+        {
+            // Ignore if already closed
+        }
         
         // Wait for writer to finish processing all entries
         await _writerTask;
@@ -118,7 +125,14 @@ public sealed class AuditLogger : IAuditLogger, IHostedService
     /// </summary>
     public async Task FlushAsync(CancellationToken ct = default)
     {
-        _channel.Writer.Complete();
+        try
+        {
+            _channel.Writer.Complete();
+        }
+        catch (ChannelClosedException)
+        {
+            // Ignore if already closed
+        }
         
         // Wait for writer to process all pending entries
         if (_writerTask != null)

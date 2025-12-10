@@ -2,9 +2,17 @@ using Testcontainers.PostgreSql;
 
 namespace Rgt.Space.Tests.Integration.Fixtures;
 
+/// <summary>
+/// Shared fixture for integration tests that require a database.
+/// Supports both Testcontainers (local) and service container (CI).
+/// </summary>
 public class TestDbFixture : IAsyncLifetime
 {
     private readonly PostgreSqlContainer? _container;
+
+    /// <summary>
+    /// Gets the connection string to the test database.
+    /// </summary>
     public string ConnectionString { get; private set; } = string.Empty;
 
     public TestDbFixture()

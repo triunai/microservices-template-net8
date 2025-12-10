@@ -2,6 +2,9 @@ using Rgt.Space.Core.Abstractions.Tenancy;
 
 namespace Rgt.Space.Tests.Integration;
 
+/// <summary>
+/// A connection factory for testing that returns a fixed connection string.
+/// </summary>
 public class TestSystemConnectionFactory : ISystemConnectionFactory, ITenantConnectionFactory
 {
     private readonly string _connectionString;

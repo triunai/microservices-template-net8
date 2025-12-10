@@ -10,6 +10,10 @@ using Testcontainers.PostgreSql;
 
 namespace Rgt.Space.Tests.Integration.Api;
 
+/// <summary>
+/// Custom WebApplicationFactory that spins up a test database container
+/// and configures the API to use it.
+/// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres;
