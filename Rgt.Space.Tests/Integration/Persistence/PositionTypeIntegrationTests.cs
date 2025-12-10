@@ -1,43 +1,26 @@
 using Dapper;
 using Npgsql;
-using Testcontainers.PostgreSql;
+using Rgt.Space.Tests.Integration.Fixtures;
 
 namespace Rgt.Space.Tests.Integration.Persistence;
 
-public class PositionTypeIntegrationTests : IAsyncLifetime
+[Trait("Category", "Integration")]
+[Collection("IntegrationTests")]
+public class PositionTypeIntegrationTests
 {
-    private PostgreSqlContainer? _postgres;
-    private string _connectionString = string.Empty;
+    private readonly TestDbFixture _fixture;
+    private string ConnectionString => _fixture.ConnectionString;
 
-    public async Task InitializeAsync()
+    public PositionTypeIntegrationTests(TestDbFixture fixture)
     {
-        // Start PostgreSQL container
-        _postgres = new PostgreSqlBuilder()
-            .WithImage("public.ecr.aws/docker/library/postgres:15-alpine")
-            .WithDatabase("test_db")
-            .WithUsername("postgres")
-            .WithPassword("postgres")
-            .Build();
-
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-
-        await TestDatabaseInitializer.InitializeAsync(_connectionString);
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (_postgres != null)
-        {
-            await _postgres.DisposeAsync();
-        }
+        _fixture = fixture;
     }
 
     [Fact]
     public async Task PositionType_ShouldHaveStatusColumnAndSupportCrud()
     {
         // Arrange
-        using var conn = new NpgsqlConnection(_connectionString);
+        using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
 
         var code = "TEST_POS";

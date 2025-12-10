@@ -2,7 +2,7 @@ using Rgt.Space.Core.Abstractions.Tenancy;
 
 namespace Rgt.Space.Tests.Integration;
 
-public class TestSystemConnectionFactory : ISystemConnectionFactory
+public class TestSystemConnectionFactory : ISystemConnectionFactory, ITenantConnectionFactory
 {
     private readonly string _connectionString;
 
@@ -12,6 +12,11 @@ public class TestSystemConnectionFactory : ISystemConnectionFactory
     }
 
     public Task<string> GetConnectionStringAsync(CancellationToken ct = default)
+    {
+        return Task.FromResult(_connectionString);
+    }
+
+    public Task<string> GetSqlConnectionStringAsync(string tenantId, CancellationToken ct = default)
     {
         return Task.FromResult(_connectionString);
     }

@@ -3,6 +3,7 @@ using Rgt.Space.Core.Constants;
 
 namespace Rgt.Space.Tests.Unit.Domain.Entities;
 
+[Trait("Category", "Unit")]
 public class PositionTypeTests
 {
     [Fact]
@@ -40,5 +41,16 @@ public class PositionTypeTests
 
         // Assert
         positionType.Status.Should().Be(StatusConstants.Inactive);
+    }
+
+    [Fact]
+    public void Create_ShouldThrow_WhenSortOrderIsNegative()
+    {
+        // Act
+        Action act = () => PositionType.Create("CODE", "Name", -1);
+
+        // Assert
+        act.Should().Throw<ArgumentException>()
+           .WithMessage("*SortOrder*");
     }
 }

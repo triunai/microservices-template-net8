@@ -37,6 +37,11 @@ public sealed class User : AuditableEntity
         string displayName, 
         string provider)
     {
+        if (string.IsNullOrWhiteSpace(externalId)) throw new ArgumentException("ExternalId cannot be empty", nameof(externalId));
+        if (string.IsNullOrWhiteSpace(email)) throw new ArgumentException("Email cannot be empty", nameof(email));
+        if (string.IsNullOrWhiteSpace(displayName)) throw new ArgumentException("DisplayName cannot be empty", nameof(displayName));
+        if (string.IsNullOrWhiteSpace(provider)) throw new ArgumentException("Provider cannot be empty", nameof(provider));
+
         // Use UUIDv7 for time-ordered IDs
         return new User(Uuid7.NewUuid7())
         {

@@ -5,6 +5,7 @@ using Rgt.Space.Infrastructure.Persistence.Services.Identity;
 
 namespace Rgt.Space.Tests.Unit.Services;
 
+[Trait("Category", "Unit")]
 public class IdentitySyncServiceTests
 {
     private readonly IUserReadDac _userReadDac;

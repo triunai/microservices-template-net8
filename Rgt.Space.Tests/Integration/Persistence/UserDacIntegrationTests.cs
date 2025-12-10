@@ -1,51 +1,36 @@
 using Dapper;
+using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using Polly.Registry;
 using Rgt.Space.Core.Configuration;
+using Rgt.Space.Core.Domain.Entities.Identity;
 using Rgt.Space.Infrastructure.Persistence.Dac.Identity;
 using Rgt.Space.Infrastructure.Resilience;
-using Testcontainers.PostgreSql;
+using Rgt.Space.Tests.Integration.Fixtures;
 
 namespace Rgt.Space.Tests.Integration.Persistence;
 
-public class UserDacIntegrationTests : IAsyncLifetime
+[Trait("Category", "Integration")]
+[Collection("IntegrationTests")]
+public class UserDacIntegrationTests
 {
-    private PostgreSqlContainer? _postgres;
-    private string _connectionString = string.Empty;
+    private readonly TestDbFixture _fixture;
+    private string ConnectionString => _fixture.ConnectionString;
 
-    public async Task InitializeAsync()
+    public UserDacIntegrationTests(TestDbFixture fixture)
     {
-        // Start PostgreSQL container
-        _postgres = new PostgreSqlBuilder()
-            .WithImage("public.ecr.aws/docker/library/postgres:15-alpine")
-            .WithDatabase("test_db")
-            .WithUsername("postgres")
-            .WithPassword("postgres")
-            .Build();
-
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-
-        await TestDatabaseInitializer.InitializeAsync(_connectionString);
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (_postgres != null)
-        {
-            await _postgres.DisposeAsync();
-        }
+        _fixture = fixture;
     }
 
     [Fact]
     public async Task GetPermissionsAsync_ShouldCalculateEffectivePermissionsCorrectly()
     {
         // This test implements the verification logic from TEST_PLAN_RBAC_FIX.md
-        
+
         // Arrange
-        var connFactory = new TestSystemConnectionFactory(_connectionString);
+        var connFactory = new TestSystemConnectionFactory(ConnectionString);
         var registry = new ResiliencePipelineRegistry<string>();
         var resilienceSettings = new ResilienceSettings
         {
@@ -64,7 +49,7 @@ public class UserDacIntegrationTests : IAsyncLifetime
         var logger = Substitute.For<ILogger<UserReadDac>>();
         var dac = new UserReadDac(connFactory, registry, options, logger);
 
-        await SetupRbacTestDataAsync(_connectionString);
+        await SetupRbacTestDataAsync(ConnectionString);
 
         var testUserId = Guid.Parse("01938567-0000-7000-8000-000000000001");
 
@@ -85,6 +70,65 @@ public class UserDacIntegrationTests : IAsyncLifetime
         var clientPerms = permissions.FirstOrDefault(p => p.Module == "CLIENTS" && p.SubModule == "CLIENT_DETAILS");
         clientPerms.Should().NotBeNull("CLIENTS module permissions should exist");
         clientPerms!.CanView.Should().BeTrue("Should be able to view clients (Allow override)");
+    }
+
+    private IOptions<ResilienceSettings> CreateValidResilienceOptions()
+    {
+        var resilienceSettings = new ResilienceSettings
+        {
+            MasterDb = new PipelineSettings
+            {
+                TimeoutMs = 1000,
+                RetryCount = 1,
+                RetryDelaysMs = new[] { 10 },
+                FailureRatio = 0.5,
+                SamplingDurationSeconds = 10,
+                MinimumThroughput = 2,
+                BreakDurationSeconds = 5
+            }
+        };
+        return Options.Create(resilienceSettings);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldPopulateAuditColumns()
+    {
+        // Arrange
+        var connFactory = new TestSystemConnectionFactory(ConnectionString);
+        var writeDac = new UserWriteDac(connFactory);
+        var readDac = new UserReadDac(connFactory, new ResiliencePipelineRegistry<string>(), CreateValidResilienceOptions(), Substitute.For<ILogger<UserReadDac>>());
+
+        var user = User.CreateFromSso("audit_test_ext", "audit@example.com", "Audit User", "google");
+
+        // Act
+        var userId = await writeDac.CreateAsync(user, CancellationToken.None);
+        var persisted = await readDac.GetByIdAsync(userId, CancellationToken.None);
+
+        // Assert
+        persisted.Should().NotBeNull();
+        persisted!.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+        persisted.UpdatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task SoftDeleteAsync_ShouldSetDeletedFlag_And_NotReturnInGetById()
+    {
+        // Arrange
+        var connFactory = new TestSystemConnectionFactory(ConnectionString);
+        var writeDac = new UserWriteDac(connFactory);
+        var readDac = new UserReadDac(connFactory, new ResiliencePipelineRegistry<string>(), CreateValidResilienceOptions(), Substitute.For<ILogger<UserReadDac>>());
+
+        var user = User.CreateFromSso("delete_test_ext", "delete@example.com", "Delete User", "google");
+        var userId = await writeDac.CreateAsync(user, CancellationToken.None);
+
+        // Act
+        // Use the user itself as the deleter (or create an admin). The user must exist in DB.
+        var deletedBy = userId;
+        await writeDac.DeleteAsync(userId, deletedBy, CancellationToken.None);
+
+        // Assert
+        var retrieved = await readDac.GetByIdAsync(userId, CancellationToken.None);
+        retrieved.Should().BeNull("Should not retrieve soft-deleted user by default");
     }
 
     private async Task SetupRbacTestDataAsync(string connectionString)

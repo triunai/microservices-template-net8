@@ -2,6 +2,7 @@ using Rgt.Space.Core.Domain.Entities.Identity;
 
 namespace Rgt.Space.Tests.Unit.Domain.Entities;
 
+[Trait("Category", "Unit")]
 public class UserTests
 {
     [Fact]
@@ -107,5 +108,20 @@ public class UserTests
         user.CreatedBy.Should().Be(createdBy);
         user.UpdatedAt.Should().Be(updatedAt);
         user.UpdatedBy.Should().Be(updatedBy);
+    }
+
+    [Theory]
+    [InlineData("", "email@example.com", "Name", "google")]
+    [InlineData("ext_123", "", "Name", "google")]
+    [InlineData("ext_123", "email@example.com", "", "google")]
+    [InlineData("ext_123", "email@example.com", "Name", "")]
+    public void CreateFromSso_ShouldThrow_WhenArgumentsAreInvalid(
+        string externalId, string email, string displayName, string provider)
+    {
+        // Act
+        Action act = () => User.CreateFromSso(externalId, email, displayName, provider);
+
+        // Assert
+        act.Should().Throw<ArgumentException>();
     }
 }

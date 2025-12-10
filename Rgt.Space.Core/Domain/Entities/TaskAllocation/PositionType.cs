@@ -18,6 +18,8 @@ public sealed class PositionType
 
     public static PositionType Create(string code, string name, int sortOrder, string? description = null, string status = StatusConstants.Active)
     {
+        if (sortOrder < 0) throw new ArgumentException("SortOrder cannot be negative", nameof(sortOrder));
+
         return new PositionType
         {
             Code = code,
