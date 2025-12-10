@@ -45,6 +45,7 @@ jobs:
             --configuration Release \
             --filter "Category!=Integration" \
             --collect:"XPlat Code Coverage"
+        timeout-minutes: 10
 
       - name: Run Integration Tests
         env:
@@ -54,6 +55,7 @@ jobs:
             --configuration Release \
             --filter "Category=Integration" \
             --collect:"XPlat Code Coverage"
+        timeout-minutes: 10
 
       - name: Install ReportGenerator
         run: dotnet tool install -g dotnet-reportgenerator-globaltool
