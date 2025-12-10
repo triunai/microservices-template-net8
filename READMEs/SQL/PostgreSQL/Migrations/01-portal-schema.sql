@@ -216,3 +216,4 @@ CREATE INDEX idx_users_email        ON users (email);
 CREATE INDEX idx_users_external_id  ON users (sso_provider, external_id);
 CREATE INDEX idx_user_roles_user    ON user_roles (user_id);
 CREATE INDEX idx_role_permissions_role ON role_permissions (role_id);
+CREATE INDEX idx_proj_assignments_proj ON project_assignments (project_id);
