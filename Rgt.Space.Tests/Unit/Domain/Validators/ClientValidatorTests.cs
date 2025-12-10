@@ -46,5 +46,6 @@ public class ClientValidatorTests
 
         // Assert
         result.IsValid.Should().BeTrue();
+        result.Errors.Should().BeEmpty();
     }
 }

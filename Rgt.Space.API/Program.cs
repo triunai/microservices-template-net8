@@ -457,4 +457,5 @@ finally
     Log.CloseAndFlush();
 }
 
+// Required for integration tests (WebApplicationFactory<Program>)
 public partial class Program { }

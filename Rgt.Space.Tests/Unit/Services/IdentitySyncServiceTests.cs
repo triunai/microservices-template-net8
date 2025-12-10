@@ -57,22 +57,7 @@ public class IdentitySyncServiceTests
 
         var existingUser = User.CreateFromSso(externalId, "old@example.com", "Old Name", provider);
 
-        var readModel = new Core.ReadModels.UserReadModel(
-            existingUser.Id,
-            existingUser.DisplayName,
-            existingUser.Email,
-            null,
-            existingUser.IsActive,
-            existingUser.LocalLoginEnabled,
-            existingUser.SsoLoginEnabled,
-            existingUser.SsoProvider,
-            existingUser.ExternalId,
-            existingUser.LastLoginAt,
-            existingUser.LastLoginProvider,
-            existingUser.CreatedAt,
-            null,
-            existingUser.UpdatedAt,
-            null);
+        var readModel = CreateUserReadModel(existingUser);
 
         _userReadDac.GetByExternalIdAsync(provider, externalId, Arg.Any<CancellationToken>())
             .Returns(readModel);
@@ -104,22 +89,7 @@ public class IdentitySyncServiceTests
         var externalId = "google_99999";
         var existingUser = User.CreateFromSso(externalId, "user@example.com", "User", provider);
 
-        var readModel = new Core.ReadModels.UserReadModel(
-            existingUser.Id,
-            existingUser.DisplayName,
-            existingUser.Email,
-            null,
-            existingUser.IsActive,
-            existingUser.LocalLoginEnabled,
-            existingUser.SsoLoginEnabled,
-            existingUser.SsoProvider,
-            existingUser.ExternalId,
-            existingUser.LastLoginAt,
-            existingUser.LastLoginProvider,
-            existingUser.CreatedAt,
-            null,
-            existingUser.UpdatedAt,
-            null);
+        var readModel = CreateUserReadModel(existingUser);
 
         _userReadDac.GetByExternalIdAsync(provider, externalId, Arg.Any<CancellationToken>())
             .Returns(readModel);
@@ -132,6 +102,24 @@ public class IdentitySyncServiceTests
             Arg.Any<User>(),
             Arg.Any<CancellationToken>());
     }
+
+    private static Core.ReadModels.UserReadModel CreateUserReadModel(User user) =>
+        new(
+            user.Id,
+            user.DisplayName,
+            user.Email,
+            null,
+            user.IsActive,
+            user.LocalLoginEnabled,
+            user.SsoLoginEnabled,
+            user.SsoProvider,
+            user.ExternalId,
+            user.LastLoginAt,
+            user.LastLoginProvider,
+            user.CreatedAt,
+            null,
+            user.UpdatedAt,
+            null);
 
     [Fact]
     public async Task SyncUserFromSsoAsync_ShouldHandleMultipleProvidersCorrectly()

@@ -115,6 +115,10 @@ public class UserTests
     [InlineData("ext_123", "", "Name", "google")]
     [InlineData("ext_123", "email@example.com", "", "google")]
     [InlineData("ext_123", "email@example.com", "Name", "")]
+    [InlineData(" ", "email@example.com", "Name", "google")]
+    [InlineData("ext_123", " ", "Name", "google")]
+    [InlineData("ext_123", "email@example.com", " ", "google")]
+    [InlineData("ext_123", "email@example.com", "Name", " ")]
     public void CreateFromSso_ShouldThrow_WhenArgumentsAreInvalid(
         string externalId, string email, string displayName, string provider)
     {

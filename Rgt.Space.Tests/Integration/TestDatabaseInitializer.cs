@@ -3,6 +3,9 @@ using Rgt.Space.Core.Constants;
 
 namespace Rgt.Space.Tests.Integration;
 
+/// <summary>
+/// Helper class to initialize the test database schema using SQL migration scripts.
+/// </summary>
 public static class TestDatabaseInitializer
 {
     private static readonly string[] RequiredFiles =
@@ -12,6 +15,10 @@ public static class TestDatabaseInitializer
         "READMEs/SQL/PostgreSQL/Migrations/03-portal-routing-schema.sql"
     };
 
+    /// <summary>
+    /// Initializes the database by executing the required SQL scripts.
+    /// </summary>
+    /// <param name="connectionString">The connection string to the target database.</param>
     public static async Task InitializeAsync(string connectionString)
     {
         await using var conn = new NpgsqlConnection(connectionString);

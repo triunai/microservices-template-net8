@@ -1,5 +1,6 @@
 using Dapper;
 using Npgsql;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Tests.Integration.Fixtures;
 
 namespace Rgt.Space.Tests.Integration.Persistence;
@@ -26,7 +27,7 @@ public class PositionTypeIntegrationTests
         var code = "TEST_POS";
         var name = "Test Position";
         var sortOrder = 100;
-        var status = "Active";
+        var status = StatusConstants.Active;
 
         // Act - Insert
         var insertSql = @"
@@ -42,16 +43,16 @@ public class PositionTypeIntegrationTests
         // Assert
         position.Should().NotBeNull();
         position!.code.Should().Be(code);
-        position.status.Should().Be("Active");
+        position.status.Should().Be(StatusConstants.Active);
 
         // Act - Update Status
-        var updateSql = "UPDATE position_types SET status = 'Inactive' WHERE code = @Code";
-        await conn.ExecuteAsync(updateSql, new { Code = code });
+        var updateSql = "UPDATE position_types SET status = @Status WHERE code = @Code";
+        await conn.ExecuteAsync(updateSql, new { Code = code, Status = StatusConstants.Inactive });
 
         var updatedPosition = await conn.QuerySingleOrDefaultAsync<PositionTypeRow>(readSql, new { Code = code });
 
         // Assert Update
-        updatedPosition!.status.Should().Be("Inactive");
+        updatedPosition!.status.Should().Be(StatusConstants.Inactive);
     }
 
     private sealed record PositionTypeRow(
