@@ -79,8 +79,10 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: dotnet sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
-      - name: Check Quality Gate Status & Fail Build
-        uses: sonarsource/sonarcloud-quality-gate-action@master
+      - name: Check Quality Gate Status & Display Summary
+        uses: sonarsource/sonarqube-quality-gate-action@master
         timeout-minutes: 5
+        with:
+          scanMetadataReportFile: .sonarqube/out/.sonar/report-task.txt
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
