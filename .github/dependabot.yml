@@ -1,0 +1,41 @@
+version: 2
+updates:
+
+  # 1. NuGet Package Dependencies (.csproj files)
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+    open-pull-requests-limit: 10
+    
+    # CRITICAL: Prevent major version bumps across all packages (Stability First)
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    
+    # Grouping Strategy to reduce PR noise (best practice)
+    groups:
+      test-dependencies:
+        # Group xUnit, Moq, FluentAssertions, etc.
+        patterns:
+          - "xunit*"
+          - "Moq"
+          - "FluentAssertions"
+          - "*Test*"
+          - "Testcontainers*"
+          - "coverlet*"
+      
+      framework-dependencies:
+        # Group all core Microsoft Extensions and system packages
+        patterns:
+          - "Microsoft.Extensions.*"
+          - "System.*"
+          - "Microsoft.AspNetCore.*"
+          - "Microsoft.EntityFrameworkCore.*"
+
+  # 2. GitHub Actions (Keep workflows secure and updated)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
