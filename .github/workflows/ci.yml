@@ -62,7 +62,11 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          reportgenerator -reports:"**/coverage.cobertura.xml" -targetdir:"coverage-report"
+          reportgenerator -reports:"**/coverage.cobertura.xml" -targetdir:"coverage-report" -reporttypes:"HtmlInline_AzurePipelines_Dark;Summary;MarkdownSummary"
+
+      - name: Publish Coverage Summary
+        run: |
+          cat coverage-report/Summary.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4

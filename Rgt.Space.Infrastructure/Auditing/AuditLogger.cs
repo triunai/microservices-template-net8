@@ -80,6 +80,9 @@ public sealed class AuditLogger : IAuditLogger, IHostedService
 
         _logger.LogInformation("Stopping audit logger and flushing pending entries...");
         
+        // Signal shutdown to background writer
+        _shutdownCts.Cancel();
+
         // Signal shutdown
         try
         {
@@ -125,6 +128,8 @@ public sealed class AuditLogger : IAuditLogger, IHostedService
     /// </summary>
     public async Task FlushAsync(CancellationToken ct = default)
     {
+        _shutdownCts.Cancel();
+
         try
         {
             _channel.Writer.Complete();
