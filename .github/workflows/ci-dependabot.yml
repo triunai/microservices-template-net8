@@ -1,4 +1,4 @@
-name: Dependabot Check
+name: CI Dependabot
 
 on:
   pull_request:
