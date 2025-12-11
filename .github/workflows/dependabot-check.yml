@@ -1,0 +1,48 @@
+name: Dependabot Check
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-deps:
+    if: github.actor == 'dependabot[bot]'
+    name: Validate Dependencies
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run Tests
+        env:
+          ConnectionStrings__TestDb: "Host=localhost;Port=5432;Database=test_db;Username=postgres;Password=postgres;Include Error Detail=true"
+        run: |
+          dotnet test Rgt.Space.Tests/Rgt.Space.Tests.csproj \
+            --configuration Release \
+            --no-build
