@@ -38,6 +38,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+  	<PackageReference Include="System.Text.Encodings.Web" Version="4.5.1" />
 		<ProjectReference Include="..\Rgt.Space.Core\Rgt.Space.Core.csproj" />
 	</ItemGroup>
 
