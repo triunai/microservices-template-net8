@@ -23,15 +23,50 @@ public class GetUserEndpointTests : IClassFixture<SpaceWebApplicationFactory>
         _client = _factory.CreateClient();
     }
 
-    private string GenerateToken()
+    private async Task<string> GenerateTokenAsync()
     {
+        var adminEmail = "admin@example.com";
+        var adminName = "Admin User";
+
+        await using var conn = new NpgsqlConnection(_factory.DbFixture.ConnectionString);
+        await conn.OpenAsync();
+
+        var adminId = await conn.QuerySingleOrDefaultAsync<Guid?>("SELECT id FROM users WHERE email = @Email", new { Email = adminEmail });
+
+        if (adminId == null)
+        {
+            var newAdmin = User.CreateManual(adminName, adminEmail, null, true, null, null, Guid.Empty);
+            adminId = newAdmin.Id;
+
+            var sql = @"
+                INSERT INTO users (id, display_name, email, is_active, local_login_enabled, created_at, updated_at, is_deleted)
+                VALUES (@Id, @DisplayName, @Email, @IsActive, @LocalLoginEnabled, @CreatedAt, @UpdatedAt, @IsDeleted)
+                ON CONFLICT (email) DO NOTHING";
+
+            await conn.ExecuteAsync(sql, new
+            {
+                Id = adminId,
+                DisplayName = newAdmin.DisplayName,
+                Email = newAdmin.Email,
+                IsActive = newAdmin.IsActive,
+                LocalLoginEnabled = newAdmin.LocalLoginEnabled,
+                CreatedAt = newAdmin.CreatedAt,
+                UpdatedAt = newAdmin.UpdatedAt,
+                IsDeleted = newAdmin.IsDeleted
+            });
+
+            var existing = await conn.QuerySingleOrDefaultAsync<Guid?>("SELECT id FROM users WHERE email = @Email", new { Email = adminEmail });
+            if (existing != null) adminId = existing;
+        }
+
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("TestSigningKey_MustBe32CharsLong12345"));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new[]
         {
-            new Claim("sub", Guid.NewGuid().ToString()),
-            new Claim("email", "test@example.com")
+            new Claim("sub", adminId.ToString()),
+            new Claim("email", adminEmail),
+            new Claim("name", adminName)
         };
 
         var token = new JwtSecurityToken(
@@ -70,7 +105,8 @@ public class GetUserEndpointTests : IClassFixture<SpaceWebApplicationFactory>
             user.IsDeleted
         });
 
-        _client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", GenerateToken());
+        var token = await GenerateTokenAsync();
+        _client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
         // Act
         var response = await _client.GetAsync($"/api/v1/users/{user.Id}");
@@ -86,7 +122,8 @@ public class GetUserEndpointTests : IClassFixture<SpaceWebApplicationFactory>
     [Fact]
     public async Task GetUser_WhenUserDoesNotExist_ShouldReturn404()
     {
-        _client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", GenerateToken());
+        var token = await GenerateTokenAsync();
+        _client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
         // Act
         var response = await _client.GetAsync($"/api/v1/users/{Guid.NewGuid()}");
