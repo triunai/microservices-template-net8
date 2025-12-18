@@ -10,6 +10,7 @@ using Rgt.Space.Infrastructure.Persistence;
 using Rgt.Space.Infrastructure.Persistence.Dac.Identity;
 using Rgt.Space.Infrastructure.Resilience;
 using Testcontainers.PostgreSql;
+using FluentAssertions;
 
 namespace Rgt.Space.Tests.Integration.Persistence;
 
@@ -26,7 +27,7 @@ public class UserDacIntegrationTests : IAsyncLifetime
     {
         // Start PostgreSQL container
         _postgres = new PostgreSqlBuilder()
-            .WithImage("postgres:18")
+            .WithImage("public.ecr.aws/docker/library/postgres:15-alpine")
             .WithDatabase("test_db")
             .WithUsername("postgres")
             .WithPassword("postgres")
@@ -95,6 +96,23 @@ public class UserDacIntegrationTests : IAsyncLifetime
         }
     }
 
+    private ResilienceSettings GetTestResilienceSettings()
+    {
+        return new ResilienceSettings
+        {
+            MasterDb = new PipelineSettings
+            {
+                TimeoutMs = 1000,
+                RetryCount = 3,
+                RetryDelaysMs = [100, 200, 300],
+                FailureRatio = 0.5,
+                SamplingDurationSeconds = 10,
+                MinimumThroughput = 2,
+                BreakDurationSeconds = 5
+            }
+        };
+    }
+
     [Fact]
     public async Task CreateAndRetrieveUser_ShouldRoundTripSuccessfully()
     {
@@ -103,15 +121,12 @@ public class UserDacIntegrationTests : IAsyncLifetime
         var tenantProvider = Substitute.For<ITenantProvider>();
         tenantProvider.Id.Returns("test_tenant");
         
-        // We can pass null/default for resilience and logger if the DAC allows it, or mocks.
-        // Since we are testing integration with DB, we need to satisfy the ctor.
-        // Assuming UserReadDac uses standard DI.
         var registry = new ResiliencePipelineRegistry<string>();
-        var options = Options.Create(new ResilienceSettings());
+        var options = Options.Create(GetTestResilienceSettings());
         var logger = Substitute.For<ILogger<UserReadDac>>();
 
         var writeDac = new UserWriteDac(connFactory);
-        var readDac = new UserReadDac(connFactory, tenantProvider, registry, options, logger);
+        var readDac = new UserReadDac(connFactory, registry, options, logger);
 
         var user = User.CreateFromSso("google_12345", "test@example.com", "Test User", "google");
 
@@ -135,11 +150,11 @@ public class UserDacIntegrationTests : IAsyncLifetime
         var tenantProvider = Substitute.For<ITenantProvider>();
         tenantProvider.Id.Returns("test_tenant");
         var registry = new ResiliencePipelineRegistry<string>();
-        var options = Options.Create(new ResilienceSettings());
+        var options = Options.Create(GetTestResilienceSettings());
         var logger = Substitute.For<ILogger<UserReadDac>>();
 
         var writeDac = new UserWriteDac(connFactory);
-        var readDac = new UserReadDac(connFactory, tenantProvider, registry, options, logger);
+        var readDac = new UserReadDac(connFactory, registry, options, logger);
 
         var user = User.CreateFromSso("azure_67890", "user@example.com", "Azure User", "azuread");
         await writeDac.CreateAsync(user, CancellationToken.None);
@@ -161,11 +176,11 @@ public class UserDacIntegrationTests : IAsyncLifetime
         var tenantProvider = Substitute.For<ITenantProvider>();
         tenantProvider.Id.Returns("test_tenant");
         var registry = new ResiliencePipelineRegistry<string>();
-        var options = Options.Create(new ResilienceSettings());
+        var options = Options.Create(GetTestResilienceSettings());
         var logger = Substitute.For<ILogger<UserReadDac>>();
 
         var writeDac = new UserWriteDac(connFactory);
-        var readDac = new UserReadDac(connFactory, tenantProvider, registry, options, logger);
+        var readDac = new UserReadDac(connFactory, registry, options, logger);
 
         var user = User.CreateFromSso("ext_123", "update@example.com", "Update Test", "google");
         var userId = await writeDac.CreateAsync(user, CancellationToken.None);
@@ -179,7 +194,7 @@ public class UserDacIntegrationTests : IAsyncLifetime
         retrievedUser.LastLoginProvider.Should().Be("google");
     }
 
-    private class TestConnectionFactory : ITenantConnectionFactory
+    private class TestConnectionFactory : ITenantConnectionFactory, ISystemConnectionFactory
     {
         private readonly string _connectionString;
 
@@ -189,6 +204,11 @@ public class UserDacIntegrationTests : IAsyncLifetime
         }
 
         public Task<string> GetSqlConnectionStringAsync(string tenantId, CancellationToken ct = default)
+        {
+            return Task.FromResult(_connectionString);
+        }
+
+        public Task<string> GetConnectionStringAsync(CancellationToken ct = default)
         {
             return Task.FromResult(_connectionString);
         }
