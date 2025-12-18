@@ -3,6 +3,7 @@ using FluentValidation;
 using MediatR;
 using Rgt.Space.Core.Abstractions.Identity;
 using Rgt.Space.Core.Domain.Entities.Identity;
+using Rgt.Space.Core.Errors;
 
 namespace Rgt.Space.Infrastructure.Commands.Identity;
 
@@ -50,7 +51,7 @@ public class UpdateUser
             var existingUser = await _writeDac.GetByIdAsync(request.UserId, ct);
             if (existingUser is null)
             {
-                return Result.Fail("User not found");
+                return Result.Fail(ErrorCatalog.USER_NOT_FOUND);
             }
 
             // Check if email is taken by another user
