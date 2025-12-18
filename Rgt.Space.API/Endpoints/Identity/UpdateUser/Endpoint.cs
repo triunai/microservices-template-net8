@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Abstractions.Identity;
 using Rgt.Space.Infrastructure.Commands.Identity;
 
 namespace Rgt.Space.API.Endpoints.Identity.UpdateUser;
@@ -17,16 +18,17 @@ public class UpdateUserRequest
 public class Endpoint : Endpoint<UpdateUserRequest>
 {
     private readonly IMediator _mediator;
+    private readonly ICurrentUser _currentUser;
 
-    public Endpoint(IMediator mediator)
+    public Endpoint(IMediator mediator, ICurrentUser currentUser)
     {
         _mediator = mediator;
+        _currentUser = currentUser;
     }
 
     public override void Configure()
     {
         Put("/api/v1/users/{userId:guid}");
-        AllowAnonymous(); // TODO: Auth
         
         Summary(s =>
         {
@@ -40,20 +42,13 @@ public class Endpoint : Endpoint<UpdateUserRequest>
 
     public override async Task HandleAsync(UpdateUserRequest req, CancellationToken ct)
     {
-        // TODO: Extract from claims. For now, use the user's own ID to satisfy FK constraint if self-updating, 
-        // or a known system/admin ID. Since we don't have auth yet, let's use the target user's ID as a fallback 
-        // assuming they are updating themselves, or a hardcoded system ID if available.
-        // The error 23503 indicates `updated_by` must exist in `users` table.
-        // Guid.Empty definitely doesn't exist.
-        Guid updatedBy = req.UserId;
-
         var cmd = new Rgt.Space.Infrastructure.Commands.Identity.UpdateUser.Command(
             req.UserId,
             req.DisplayName,
             req.Email,
             req.ContactNumber,
             req.IsActive,
-            updatedBy);
+            _currentUser.Id);
 
         var result = await _mediator.Send(cmd, ct);
 

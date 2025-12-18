@@ -69,7 +69,9 @@ public class IdentitySyncServiceTests
             existingUser.LastLoginAt,
             existingUser.LastLoginProvider,
             existingUser.CreatedAt,
-            existingUser.UpdatedAt);
+            existingUser.CreatedBy,
+            existingUser.UpdatedAt,
+            existingUser.UpdatedBy);
 
         _userReadDac.GetByExternalIdAsync(provider, externalId, Arg.Any<CancellationToken>())
             .Returns(readModel);
@@ -114,7 +116,9 @@ public class IdentitySyncServiceTests
             existingUser.LastLoginAt,
             existingUser.LastLoginProvider,
             existingUser.CreatedAt,
-            existingUser.UpdatedAt);
+            existingUser.CreatedBy,
+            existingUser.UpdatedAt,
+            existingUser.UpdatedBy);
 
         _userReadDac.GetByExternalIdAsync(provider, externalId, Arg.Any<CancellationToken>())
             .Returns(readModel);
