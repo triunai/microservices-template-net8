@@ -42,6 +42,12 @@ public sealed class CheckpointTracker : ICheckpointTracker
     /// <inheritdoc />
     public void Enter(string checkpoint)
     {
+        // Guard against null/empty checkpoints
+        if (string.IsNullOrWhiteSpace(checkpoint))
+        {
+            return; // Silently skip invalid checkpoints
+        }
+        
         // Enforce bounded nesting to prevent unbounded memory growth
         if (_stack.Count >= MaxStackDepth)
         {
@@ -120,6 +126,38 @@ public sealed class CheckpointTracker : ICheckpointTracker
             var result = work();
             Complete();
             return result;
+        }
+        catch
+        {
+            Fail("exception");
+            throw;
+        }
+    }
+    
+    /// <inheritdoc />
+    public async Task InStepAsync(string checkpoint, Func<Task> work)
+    {
+        Enter(checkpoint);
+        try
+        {
+            await work();
+            Complete();
+        }
+        catch
+        {
+            Fail("exception");
+            throw;
+        }
+    }
+    
+    /// <inheritdoc />
+    public void InStep(string checkpoint, Action work)
+    {
+        Enter(checkpoint);
+        try
+        {
+            work();
+            Complete();
         }
         catch
         {

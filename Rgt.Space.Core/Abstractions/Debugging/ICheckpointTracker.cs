@@ -78,4 +78,20 @@ public interface ICheckpointTracker
     /// <param name="work">Sync work to execute</param>
     /// <returns>Result of the work</returns>
     T InStep<T>(string checkpoint, Func<T> work);
+    
+    /// <summary>
+    /// Execute async work within a checkpoint scope (void return).
+    /// Automatically calls Enter/Complete/Fail based on outcome.
+    /// </summary>
+    /// <param name="checkpoint">Checkpoint name</param>
+    /// <param name="work">Async work to execute</param>
+    Task InStepAsync(string checkpoint, Func<Task> work);
+    
+    /// <summary>
+    /// Execute sync work within a checkpoint scope (void return).
+    /// Automatically calls Enter/Complete/Fail based on outcome.
+    /// </summary>
+    /// <param name="checkpoint">Checkpoint name</param>
+    /// <param name="work">Sync work to execute</param>
+    void InStep(string checkpoint, Action work);
 }

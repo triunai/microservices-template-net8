@@ -1,7 +1,9 @@
 ﻿using Rgt.Space.Core.Abstractions;
 using Rgt.Space.Core.Abstractions.Auditing;
+using Rgt.Space.Core.Abstractions.Debugging;
 using Rgt.Space.Core.Abstractions.Tenancy;
 using Rgt.Space.Core.Configuration;
+using Rgt.Space.Core.Debugging;
 using Rgt.Space.Infrastructure.Auditing;
 using Rgt.Space.Infrastructure.Behaviors;
 using Rgt.Space.Infrastructure.Queries.Sales;
@@ -83,14 +85,21 @@ namespace Rgt.Space.Infrastructure
             // Register keyed per-tenant pipelines at startup
             services.AddResiliencePipelineRegistry<string>();
 
-            // Register MediatR with audit pipeline behavior
+            // Register MediatR with pipeline behaviors
             services.AddMediatR(cfg =>
             {
                 cfg.RegisterServicesFromAssembly(typeof(GetSaleById.Handler).Assembly);
                 
-                // Add audit logging pipeline behavior (intercepts all queries/commands)
+                // Pipeline behavior order matters!
+                // 1. Checkpoint tracking (must be first to track handler entry before audit)
+                cfg.AddOpenBehavior(typeof(CheckpointPipelineBehavior<,>));
+                
+                // 2. Audit logging (intercepts all queries/commands, runs after checkpoint tracking)
                 cfg.AddOpenBehavior(typeof(AuditLoggingBehavior<,>));
             });
+            
+            // Combo-Break Debugger: Request-scoped checkpoint tracker
+            services.AddScoped<ICheckpointTracker, CheckpointTracker>();
 
             // Redis distributed cache with lazy singleton (ready for future use: product catalog, sessions)
             // Lazy connection - connects on first use, doesn't block startup

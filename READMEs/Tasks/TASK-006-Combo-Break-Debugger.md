@@ -124,12 +124,12 @@ Before implementation, verify these files:
 
 #### 0.1 HttpConstants Extensions
 - **File**: `Rgt.Space.Core/Constants/HttpConstants.cs`
-- [ ] Add to `Headers` class:
+- [x] Add to `Headers` class:
   ```csharp
   public const string CheckpointLast = "X-Checkpoint-Last";
   public const string CheckpointCurrent = "X-Checkpoint-Current";
   ```
-- [ ] Add to `ContextKeys` class:
+- [x] Add to `ContextKeys` class:
   ```csharp
   public const string CheckpointLast = "CheckpointLast";
   public const string CheckpointCurrent = "CheckpointCurrent";
@@ -137,7 +137,7 @@ Before implementation, verify these files:
 
 #### 0.2 ComboBreakSnapshot DTO
 - **File**: `Rgt.Space.Core/Debugging/ComboBreakSnapshot.cs`
-- [ ] Create record:
+- [x] Create record:
   ```csharp
   public sealed record ComboBreakSnapshot
   {
@@ -162,7 +162,7 @@ Before implementation, verify these files:
 
 #### 1.1 ICheckpointTracker Interface
 - **File**: `Rgt.Space.Core/Abstractions/Debugging/ICheckpointTracker.cs`
-- [ ] Create interface:
+- [x] Create interface:
   ```csharp
   public interface ICheckpointTracker
   {
@@ -202,7 +202,7 @@ Before implementation, verify these files:
 
 #### 1.2 CheckpointTracker Implementation (Stack-Based with Nesting Support)
 - **File**: `Rgt.Space.Core/Debugging/CheckpointTracker.cs`
-- [ ] Implement with **stack for nested steps** and **Activity tags (not events)**:
+- [x] Implement with **stack for nested steps** and **Activity tags (not events)**:
   ```csharp
   public sealed class CheckpointTracker : ICheckpointTracker
   {
@@ -315,7 +315,7 @@ Before implementation, verify these files:
       }
   }
   ```
-- [ ] **Register in Extensions.cs**:
+- [x] **Register in Extensions.cs**:
   ```csharp
   services.AddScoped<ICheckpointTracker, CheckpointTracker>();
   ```
@@ -328,7 +328,7 @@ Before implementation, verify these files:
 
 #### 1.3 CheckpointPipelineBehavior
 - **File**: `Rgt.Space.Infrastructure/Behaviors/CheckpointPipelineBehavior.cs`
-- [ ] Implement:
+- [x] Implement:
   ```csharp
   public sealed class CheckpointPipelineBehavior<TRequest, TResponse> 
       : IPipelineBehavior<TRequest, TResponse>
@@ -392,7 +392,7 @@ Before implementation, verify these files:
       }
   }
   ```
-- [ ] **Register in Extensions.cs** (order matters):
+- [x] **Register in Extensions.cs** (order matters):
   ```csharp
   cfg.AddOpenBehavior(typeof(CheckpointPipelineBehavior<,>));  // First
   cfg.AddOpenBehavior(typeof(AuditLoggingBehavior<,>));        // Second
@@ -400,7 +400,7 @@ Before implementation, verify these files:
 
 #### 1.4 Enhance GlobalExceptionHandler
 - **File**: `Rgt.Space.API/Middleware/GlobalExceptionHandler.cs`
-- [ ] In `TryHandleAsync`, after logging, store checkpoint info in HttpContext:
+- [x] In `TryHandleAsync`, after logging, store checkpoint info in HttpContext:
   ```csharp
   // Get checkpoint info
   var tracker = httpContext.RequestServices.GetService<ICheckpointTracker>();
@@ -417,7 +417,7 @@ Before implementation, verify these files:
   httpContext.Items[HttpConstants.ContextKeys.CheckpointCurrent] = checkpointCurrent;
   httpContext.Items[HttpConstants.ContextKeys.CheckpointLast] = checkpointLast;
   ```
-- [ ] Enhance `LogException` method with "COMBO BREAK" log line:
+- [x] Enhance `LogException` method with "COMBO BREAK" log line:
   ```csharp
   _logger.LogError(exception,
       "💥 COMBO BREAK | CorrelationId: {CorrelationId} | Current: {Current} | Last: {Last} | Route: {Route} | TraceId: {TraceId}",
@@ -427,7 +427,7 @@ Before implementation, verify these files:
 
 #### 1.5 Enhance ProblemDetailsFactory
 - **File**: `Rgt.Space.API/ProblemDetails/ProblemDetailsFactory.cs`
-- [ ] Add to `EnrichWithContext` method:
+- [x] Add to `EnrichWithContext` method:
   ```csharp
   if (httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CheckpointCurrent, out var current))
   {
@@ -442,7 +442,7 @@ Before implementation, verify these files:
 
 #### 1.6 ComboBreakHeadersMiddleware
 - **File**: `Rgt.Space.API/Middleware/ComboBreakHeadersMiddleware.cs`
-- [ ] Implement using `OnStarting` pattern with **fail-silent** try/catch:
+- [x] Implement using `OnStarting` pattern with **fail-silent** try/catch:
   ```csharp
   public class ComboBreakHeadersMiddleware
   {
@@ -504,7 +504,7 @@ Before implementation, verify these files:
       }
   }
   ```
-- [ ] **Register in Program.cs** (early in pipeline, before rate limiter):
+- [x] **Register in Program.cs** (early in pipeline, before rate limiter):
   ```csharp
   app.UseMiddleware<CorrelationIdMiddleware>();       // 1
   app.UseMiddleware<TenantResolutionMiddleware>();    // 2

@@ -378,8 +378,15 @@ try
 
     // Middleware pipeline (ORDER MATTERS!)
     
+    // 0. Global exception handler (MUST be first to catch all exceptions)
+    // This invokes GlobalExceptionHandler registered via AddExceptionHandler
+    app.UseExceptionHandler();
+    
     // 1. Correlation ID middleware (generates correlation ID for the request)
     app.UseMiddleware<CorrelationIdMiddleware>();
+    
+    // 1.5 Combo-Break Debugger headers (dev-only, adds X-Checkpoint-* headers to 5xx responses)
+    app.UseComboBreakHeaders();
     
     // 2. Tenant resolution middleware (extracts tenant and enriches logs)
     app.UseMiddleware<TenantResolutionMiddleware>();

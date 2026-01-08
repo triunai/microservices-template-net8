@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Diagnostics;
+using Rgt.Space.Core.Abstractions.Debugging;
 using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Errors;
 
@@ -7,14 +8,16 @@ namespace Rgt.Space.API.Middleware
     /// <summary>
     /// Global exception handler using .NET 8's IExceptionHandler interface.
     /// Catches all unhandled exceptions and converts them to RFC 7807 ProblemDetails responses.
-    /// Logs exceptions with Serilog including correlation ID and tenant context.
+    /// Logs exceptions with Serilog including correlation ID, tenant context, and checkpoint info.
     /// </summary>
     public sealed class GlobalExceptionHandler : IExceptionHandler
     {
         private readonly ILogger<GlobalExceptionHandler> _logger;
         private readonly IHostEnvironment _environment;
 
-        public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHostEnvironment environment)
+        public GlobalExceptionHandler(
+            ILogger<GlobalExceptionHandler> logger, 
+            IHostEnvironment environment)
         {
             _logger = logger;
             _environment = environment;
@@ -35,8 +38,20 @@ namespace Rgt.Space.API.Middleware
             }
             else
             {
+                // Resolve ICheckpointTracker from request services (scoped service)
+                // Note: IExceptionHandler is singleton, ICheckpointTracker is scoped
+                var checkpointTracker = httpContext.RequestServices.GetService<ICheckpointTracker>();
+                
+                // Capture checkpoint state BEFORE logging (no coalescing - preserve null signals)
+                var checkpointCurrent = checkpointTracker?.Current;
+                var checkpointLast = checkpointTracker?.Last;
+                
+                // Store in HttpContext.Items for ProblemDetailsFactory and middleware
+                httpContext.Items[HttpConstants.ContextKeys.CheckpointCurrent] = checkpointCurrent;
+                httpContext.Items[HttpConstants.ContextKeys.CheckpointLast] = checkpointLast;
+                
                 // Log the exception with full context
-                LogException(httpContext, exception);
+                LogException(httpContext, exception, checkpointCurrent, checkpointLast);
 
                 // Create ProblemDetails response
                 var includeDetails = _environment.IsDevelopment();
@@ -56,7 +71,11 @@ namespace Rgt.Space.API.Middleware
             return true;
         }
 
-        private void LogException(HttpContext httpContext, Exception exception)
+        private void LogException(
+            HttpContext httpContext, 
+            Exception exception, 
+            string? checkpointCurrent,
+            string? checkpointLast)
         {
             const string unknown = "Unknown";
             const string anonymous = "Anonymous";
@@ -70,20 +89,29 @@ namespace Rgt.Space.API.Middleware
             {
                 case AppException appEx:
                     // Application exceptions are expected business errors (log as warning)
+                    // Still log COMBO BREAK for business errors — useful for debugging
+                    _logger.LogWarning(
+                        "💥 COMBO BREAK | CorrelationId: {CorrelationId} | Current: {CheckpointCurrent} | Last: {CheckpointLast} | Path: {Path}",
+                        correlationId, checkpointCurrent ?? "(null)", checkpointLast ?? "(null)", httpContext.Request.Path);
+                    
                     _logger.LogWarning(exception,
                         "Application error: {ErrorCode} | CorrelationId: {CorrelationId} | TenantId: {TenantId} | UserId: {UserId} | Path: {Path}",
                         appEx.ErrorCode, correlationId, tenantId, userId, httpContext.Request.Path);
                     break;
 
                 case OperationCanceledException:
-                    // Request was cancelled by client (log as information)
+                    // Request was cancelled by client — NOT a combo break, don't log as such
                     _logger.LogInformation(
                         "Request cancelled: CorrelationId: {CorrelationId} | TenantId: {TenantId} | Path: {Path}",
                         correlationId, tenantId, httpContext.Request.Path);
                     break;
 
                 default:
-                    // Unexpected exceptions are errors (log as error)
+                    // Unexpected exceptions are errors — log COMBO BREAK for debugging
+                    _logger.LogWarning(
+                        "💥 COMBO BREAK | CorrelationId: {CorrelationId} | Current: {CheckpointCurrent} | Last: {CheckpointLast} | Path: {Path}",
+                        correlationId, checkpointCurrent ?? "(null)", checkpointLast ?? "(null)", httpContext.Request.Path);
+                    
                     _logger.LogError(exception,
                         "Unhandled exception: {ExceptionType} | CorrelationId: {CorrelationId} | TenantId: {TenantId} | UserId: {UserId} | Path: {Path}",
                         exception.GetType().Name, correlationId, tenantId, userId, httpContext.Request.Path);
