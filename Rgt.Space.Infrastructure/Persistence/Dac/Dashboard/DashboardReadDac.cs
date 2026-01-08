@@ -73,15 +73,25 @@ public sealed class DashboardReadDac : IDashboardReadDac
                     (SELECT COUNT(*) FROM projects WHERE status = 'Inactive' AND is_deleted = FALSE) as InactiveProjects,
                     
                     -- Calculate Vacancies: (ActiveProjects * 3) - (Filled Mandatory Roles)
+                    -- Calculate Vacancies: (Total Seats Needed) - (Seats Filled)
+                    
+                    -- LOGIC BREAKDOWN:
+                    -- 1. Demand: Every 'Active' project requires exactly 3 roles (Tech, Func, Support).
+                    --    Example: 10 Active Projects * 3 = 30 Mandated Seats.
+                    -- 2. Supply: Count actual humans assigned to those 3 specific roles.
+                    --    (We ignore 'Backup' roles and Assignments on 'Inactive' projects).
+                    -- 3. Result: 30 Seats - 20 Assigned = 10 Pending Vacancies.
                     (
+                        -- Part A: Total Demand (The ""Target"")
                         (SELECT COUNT(*) * 3 FROM projects WHERE status = 'Active' AND is_deleted = FALSE)
                         -
+                        -- Part B: Current Supply (The ""Actual"")
                         (SELECT COUNT(*) 
                          FROM project_assignments pa
                          JOIN projects p ON pa.project_id = p.id
-                         WHERE pa.position_code IN ('TECH_PIC', 'FUNC_PIC', 'SUPPORT_PIC')
-                           AND pa.is_deleted = FALSE
-                           AND p.status = 'Active'
+                         WHERE pa.position_code IN ('TECH_PIC', 'FUNC_PIC', 'SUPPORT_PIC') -- Only count Critical Roles
+                           AND pa.is_deleted = FALSE  -- Ignore ""Zombie"" assignments
+                           AND p.status = 'Active'    -- Ignore assignments on archived projects
                            AND p.is_deleted = FALSE)
                     ) as PendingVacancies";
 
