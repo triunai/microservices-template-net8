@@ -3,6 +3,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using Polly;
 using Polly.Registry;
 using Rgt.Space.Core.Configuration;
 using Rgt.Space.Core.Domain.Entities.Identity;
@@ -31,10 +32,13 @@ public class UserDacIntegrationTests
 
         // Arrange
         var connFactory = new TestSystemConnectionFactory(ConnectionString);
-        var registry = new ResiliencePipelineRegistry<string>();
-        var options = CreateValidResilienceOptions();
+        
+        // Mock the provider to return an empty pipeline
+        var pipelineProvider = Substitute.For<ResiliencePipelineProvider<string>>();
+        pipelineProvider.GetPipeline("System").Returns(ResiliencePipeline.Empty);
+        
         var logger = Substitute.For<ILogger<UserReadDac>>();
-        var dac = new UserReadDac(connFactory, registry, options, logger);
+        var dac = new UserReadDac(connFactory, pipelineProvider, logger);
 
         await SetupRbacTestDataAsync(ConnectionString);
 
@@ -82,8 +86,13 @@ public class UserDacIntegrationTests
     {
         // Arrange
         var connFactory = new TestSystemConnectionFactory(ConnectionString);
-        var writeDac = new UserWriteDac(connFactory);
-        var readDac = new UserReadDac(connFactory, new ResiliencePipelineRegistry<string>(), CreateValidResilienceOptions(), Substitute.For<ILogger<UserReadDac>>());
+        
+        // Mock provider
+        var pipelineProvider = Substitute.For<ResiliencePipelineProvider<string>>();
+        pipelineProvider.GetPipeline("System").Returns(ResiliencePipeline.Empty);
+
+        var writeDac = new UserWriteDac(connFactory, pipelineProvider);
+        var readDac = new UserReadDac(connFactory, pipelineProvider, Substitute.For<ILogger<UserReadDac>>());
 
         var user = User.CreateFromSso("audit_test_ext", "audit@example.com", "Audit User", "google");
 
@@ -103,8 +112,13 @@ public class UserDacIntegrationTests
     {
         // Arrange
         var connFactory = new TestSystemConnectionFactory(ConnectionString);
-        var writeDac = new UserWriteDac(connFactory);
-        var readDac = new UserReadDac(connFactory, new ResiliencePipelineRegistry<string>(), CreateValidResilienceOptions(), Substitute.For<ILogger<UserReadDac>>());
+        
+        // Mock provider
+        var pipelineProvider = Substitute.For<ResiliencePipelineProvider<string>>();
+        pipelineProvider.GetPipeline("System").Returns(ResiliencePipeline.Empty);
+
+        var writeDac = new UserWriteDac(connFactory, pipelineProvider);
+        var readDac = new UserReadDac(connFactory, pipelineProvider, Substitute.For<ILogger<UserReadDac>>());
 
         var user = User.CreateFromSso("delete_test_ext", "delete@example.com", "Delete User", "google");
         var userId = await writeDac.CreateAsync(user, CancellationToken.None);

@@ -16,53 +16,33 @@ namespace Rgt.Space.Infrastructure.Persistence.Dac.Identity;
 public sealed class UserReadDac : IUserReadDac
 {
     private readonly ISystemConnectionFactory _connFactory;
-    private readonly ResiliencePipelineRegistry<string> _pipelineRegistry;
-    private readonly IOptions<ResilienceSettings> _resilienceSettings;
+    private readonly ResiliencePipeline _pipeline;
     private readonly ILogger<UserReadDac> _logger;
 
     public UserReadDac(
         ISystemConnectionFactory connFactory,
-        ResiliencePipelineRegistry<string> pipelineRegistry,
-        IOptions<ResilienceSettings> resilienceSettings,
+        ResiliencePipelineProvider<string> pipelineProvider,
         ILogger<UserReadDac> logger)
     {
         _connFactory = connFactory;
-        _pipelineRegistry = pipelineRegistry;
-        _resilienceSettings = resilienceSettings;
+        // Standard Pattern A: Inject and use the pre-registered "System" pipeline
+        _pipeline = pipelineProvider.GetPipeline("System");
         _logger = logger;
     }
 
-    private ResiliencePipeline GetPipeline()
-    {
-        // Use a static key for system/global queries
-        const string pipelineKey = "System";
-        
-        if (!_pipelineRegistry.TryGetPipeline(pipelineKey, out var pipeline))
-        {
-            _pipelineRegistry.TryAddBuilder(pipelineKey, (builder, context) =>
-            {
-                // Use MasterDb settings for system queries as they are critical
-                var settings = _resilienceSettings.Value.MasterDb;
-                builder.AddPipelineFromSettings(
-                    settings,
-                    ResiliencePolicies.IsSqlTransientError,
-                    $"SystemDb",
-                    _logger);
-            });
-            pipeline = _pipelineRegistry.GetPipeline(pipelineKey);
-        }
-        return pipeline;
-    }
+    // private ResiliencePipeline GetPipeline() -- REMOVED (Pattern A doesn't need this)
+
 
     public async Task<UserReadModel?> GetByIdAsync(Guid userId, CancellationToken ct)
     {
-        var pipeline = GetPipeline();
+        // var pipeline = GetPipeline(); // Using _pipeline field
+
         
         _logger.LogDebug("Querying user {UserId} (System)", userId);
         
         var connectionString = await _connFactory.GetConnectionStringAsync(ct);
         
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connectionString);
             await conn.OpenAsync(token);
@@ -87,10 +67,12 @@ public sealed class UserReadDac : IUserReadDac
                 FROM users
                 WHERE id = @UserId AND is_deleted = FALSE";
 
-            var result = await conn.QuerySingleOrDefaultAsync<_UserRow>(
+            var cmd = new CommandDefinition(
                 sql,
                 new { UserId = userId },
-                commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+                commandTimeout: SqlConstants.CommandTimeouts.TenantDb,
+                cancellationToken: token);
+            var result = await conn.QuerySingleOrDefaultAsync<_UserRow>(cmd);
 
             if (result is null)
             {
@@ -119,10 +101,11 @@ public sealed class UserReadDac : IUserReadDac
 
     public async Task<UserReadModel?> GetByEmailAsync(string email, CancellationToken ct)
     {
-        var pipeline = GetPipeline();
+        // var pipeline = GetPipeline(); 
+
         var connectionString = await _connFactory.GetConnectionStringAsync(ct);
         
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connectionString);
             await conn.OpenAsync(token);
@@ -147,10 +130,12 @@ public sealed class UserReadDac : IUserReadDac
                 FROM users
                 WHERE email = @Email AND is_deleted = FALSE";
 
-            var result = await conn.QuerySingleOrDefaultAsync<_UserRow>(
+            var cmd = new CommandDefinition(
                 sql,
                 new { Email = email },
-                commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+                commandTimeout: SqlConstants.CommandTimeouts.TenantDb,
+                cancellationToken: token);
+            var result = await conn.QuerySingleOrDefaultAsync<_UserRow>(cmd);
 
             if (result is null) return null;
 
@@ -175,10 +160,11 @@ public sealed class UserReadDac : IUserReadDac
 
     public async Task<UserReadModel?> GetByEmailAnyAsync(string email, CancellationToken ct)
     {
-        var pipeline = GetPipeline();
+        // var pipeline = GetPipeline(); 
+
         var connectionString = await _connFactory.GetConnectionStringAsync(ct);
         
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connectionString);
             await conn.OpenAsync(token);
@@ -203,10 +189,12 @@ public sealed class UserReadDac : IUserReadDac
                 FROM users
                 WHERE email = @Email"; // Intentionally ignoring is_deleted
 
-            var result = await conn.QuerySingleOrDefaultAsync<_UserRow>(
+            var cmd = new CommandDefinition(
                 sql,
                 new { Email = email },
-                commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+                commandTimeout: SqlConstants.CommandTimeouts.TenantDb,
+                cancellationToken: token);
+            var result = await conn.QuerySingleOrDefaultAsync<_UserRow>(cmd);
 
             if (result is null) return null;
 
@@ -231,10 +219,11 @@ public sealed class UserReadDac : IUserReadDac
 
     public async Task<UserReadModel?> GetByExternalIdAsync(string provider, string externalId, CancellationToken ct)
     {
-        var pipeline = GetPipeline();
+        // var pipeline = GetPipeline(); 
+
         var connectionString = await _connFactory.GetConnectionStringAsync(ct);
         
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connectionString);
             await conn.OpenAsync(token);
@@ -261,10 +250,12 @@ public sealed class UserReadDac : IUserReadDac
                   AND external_id = @ExternalId
                   AND is_deleted = FALSE";
 
-            var result = await conn.QuerySingleOrDefaultAsync<_UserRow>(
+            var cmd = new CommandDefinition(
                 sql,
                 new { Provider = provider, ExternalId = externalId },
-                commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+                commandTimeout: SqlConstants.CommandTimeouts.TenantDb,
+                cancellationToken: token);
+            var result = await conn.QuerySingleOrDefaultAsync<_UserRow>(cmd);
 
             if (result is null) return null;
 
@@ -289,10 +280,11 @@ public sealed class UserReadDac : IUserReadDac
 
     public async Task<IReadOnlyList<UserReadModel>> GetAllAsync(CancellationToken ct)
     {
-        var pipeline = GetPipeline();
+        // var pipeline = GetPipeline(); 
+
         var connectionString = await _connFactory.GetConnectionStringAsync(ct);
         
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connectionString);
             await conn.OpenAsync(token);
@@ -319,9 +311,11 @@ public sealed class UserReadDac : IUserReadDac
                 WHERE is_deleted = FALSE
                 ORDER BY display_name";
 
-            var results = await conn.QueryAsync<_UserRow>(
+            var cmd = new CommandDefinition(
                 sql,
-                commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+                commandTimeout: SqlConstants.CommandTimeouts.TenantDb,
+                cancellationToken: token);
+            var results = await conn.QueryAsync<_UserRow>(cmd);
 
             return results
                 .Select(r => new UserReadModel(
@@ -346,10 +340,11 @@ public sealed class UserReadDac : IUserReadDac
 
     public async Task<IReadOnlyList<UserReadModel>> SearchAsync(string searchTerm, CancellationToken ct)
     {
-        var pipeline = GetPipeline();
+        // var pipeline = GetPipeline(); 
+
         var connectionString = await _connFactory.GetConnectionStringAsync(ct);
         
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connectionString);
             await conn.OpenAsync(token);
@@ -377,10 +372,12 @@ public sealed class UserReadDac : IUserReadDac
                 ORDER BY display_name
                 LIMIT 20";
 
-            var results = await conn.QueryAsync<_UserRow>(
+            var cmd = new CommandDefinition(
                 sql,
                 new { SearchTerm = $"%{searchTerm}%" },
-                commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+                commandTimeout: SqlConstants.CommandTimeouts.TenantDb,
+                cancellationToken: token);
+            var results = await conn.QueryAsync<_UserRow>(cmd);
 
             return results
                 .Select(r => new UserReadModel(
@@ -405,10 +402,11 @@ public sealed class UserReadDac : IUserReadDac
 
     public async Task<IReadOnlyList<UserPermissionReadModel>> GetPermissionsAsync(Guid userId, CancellationToken ct)
     {
-        var pipeline = GetPipeline();
+        // var pipeline = GetPipeline(); 
+
         var connectionString = await _connFactory.GetConnectionStringAsync(ct);
         
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connectionString);
             await conn.OpenAsync(token);
@@ -454,10 +452,12 @@ public sealed class UserReadDac : IUserReadDac
                 GROUP BY m.code, r.code
                 ORDER BY m.code, r.code";
 
-            var results = await conn.QueryAsync<_UserPermissionRow>(
+            var cmd = new CommandDefinition(
                 sql,
                 new { UserId = userId },
-                commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+                commandTimeout: SqlConstants.CommandTimeouts.TenantDb,
+                cancellationToken: token);
+            var results = await conn.QueryAsync<_UserPermissionRow>(cmd);
 
             return results
                 .Select(r => new UserPermissionReadModel(
@@ -499,10 +499,11 @@ public sealed class UserReadDac : IUserReadDac
 
     public async Task<UserCredentialsReadModel?> GetCredentialsByEmailAsync(string email, CancellationToken ct)
     {
-        var pipeline = GetPipeline();
+        // var pipeline = GetPipeline(); 
+
         var connectionString = await _connFactory.GetConnectionStringAsync(ct);
         
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connectionString);
             await conn.OpenAsync(token);
@@ -522,10 +523,12 @@ public sealed class UserReadDac : IUserReadDac
                 WHERE email = @Email 
                   AND is_deleted = FALSE";
 
-            var result = await conn.QuerySingleOrDefaultAsync<_UserCredentialsRow>(
+            var cmd = new CommandDefinition(
                 sql,
                 new { Email = email },
-                commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+                commandTimeout: SqlConstants.CommandTimeouts.TenantDb,
+                cancellationToken: token);
+            var result = await conn.QuerySingleOrDefaultAsync<_UserCredentialsRow>(cmd);
 
             if (result is null) return null;
 

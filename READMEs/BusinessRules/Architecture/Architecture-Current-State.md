@@ -1,14 +1,8 @@
-This is the **Finalized Architecture Reference (Version 1.4)**.
-
-I have synchronized the document with your actual SQL schema and Middleware code to remove the formatting inconsistencies.
-
-***
-
 # 🏛️ Architecture Reference: The ReactPortal Monolith
 
-**Version:** 1.4 (Final Refinement)
-**Date:** 2025-11-28
-**Status:** AUTHORITATIVE SINGLE SOURCE OF TRUTH
+**Version:** 1.5 (Post-Audit Refinement)  
+**Date:** 2026-01-26  
+**Status:** AUTHORITATIVE SINGLE SOURCE OF TRUTH  
 **Target Audience:** AI Agents, Developers, Architects
 
 ---
@@ -19,8 +13,8 @@ This document defines the **Physical Laws** of the `ReactPortal` system.
 When generating code, analyzing schemas, or proposing solutions, **STRICTLY ADHERE** to these constraints.
 **Do not offer alternatives** (e.g., "Maybe use Microservices"). We have already decided.
 
-**Current Stack:** PostgreSQL 18 (UUIDv7), ASP.NET Core 8 (Clean Arch), React (Vite/Zustand).
-**Schema Strategy:** Logical Monolith (`rgt_space_portal`).
+**Current Stack:** PostgreSQL 18 (UUIDv7), ASP.NET Core 8 (Clean Arch), React (Vite/Zustand).  
+**Schema Strategy:** Logical Monolith (`rgt_space_portal`).  
 **Auth Strategy:** RS256 (RSA/JWKS) via OIDC.
 
 ---
@@ -28,7 +22,7 @@ When generating code, analyzing schemas, or proposing solutions, **STRICTLY ADHE
 ## 1. 🏗️ Database Architecture
 
 ### 1.1 Single Database Strategy
-**Pattern:** Logical Monolith.
+**Pattern:** Logical Monolith.  
 **Database Name:** `rgt_space_portal`.
 
 **Critical Constraints:**
@@ -41,12 +35,25 @@ When generating code, analyzing schemas, or proposing solutions, **STRICTLY ADHE
 | :--- | :--- | :--- | :--- |
 | `users` | **GLOBAL** | `id` | Users exist outside of clients. |
 | `roles` | **GLOBAL** | `id` | "Project Manager" is a universal concept. |
-| `clients` | **GLOBAL** | `id` | The Tenant organizations. |
+| `clients` | **GLOBAL** | `id` | The business organizations (NOT tenants). |
 | `projects` | **CLIENT** | `client_id` | Must belong to a Client. |
 | `mappings` | **PROJECT** | `project_id` | Routing configuration. |
 | `assignments` | **PROJECT** | `project_id` | Staffing matrix. |
+| `features` | **GLOBAL** | `id` | Feature flag definitions. |
+| `client_features` | **CLIENT** | `client_id` | Feature subscriptions per client. |
 
-### 1.3 Connection Strings
+### 1.3 Critical Terminology (Do NOT Confuse)
+
+| Term | Meaning | Example | Used For |
+|------|---------|---------|----------|
+| **Tenant** (`tid`) | SSO application context | `RGT_SPACE_PORTAL` | JWT claim, legacy sales DB routing |
+| **Client** | Business organization row in `clients` table | `ACME`, `TOYOTA`, `BURGERKING` | Business data isolation |
+| **X-Tenant header** | Legacy tenant identifier | `BURGER_KING_MY` | Sales DB connection routing |
+
+🚨 **Client data isolation uses `clients.code` / `client_id`, NOT tenant context.**  
+🚨 **Feature flags use Client context, NOT Tenant context.**
+
+### 1.4 Connection Strings
 *   **`PortalDb` (ACTIVE):** The main application database (`rgt_space_portal`).
 *   **`RgtAuthPrototype` (ACTIVE):** The external SSO Service Broker database.
 *   **`TenantMaster` (LEGACY):** **DO NOT USE.** Artifact from the old POS template.
@@ -86,6 +93,12 @@ When generating code, analyzing schemas, or proposing solutions, **STRICTLY ADHE
     *   Multiple people CAN hold the same position type (e.g., 2 Support PICs are allowed).
     *   A specific user cannot be assigned the exact same position twice on the same project.
     *   **SQL:** `UNIQUE (project_id, user_id, position_code) WHERE is_deleted = FALSE`.
+
+### 2.5 Feature Flags (Gatekeeper)
+*   **Structure:** `features` (1) ↔ (N) `client_features` ↔ (N) `user_feature_overrides`.
+*   **Evaluation:** `Result = Global ∧ Client ∧ UserOverride` (Waterfall).
+*   **Client Context:** Derived from route parameters or database lookups, NOT from tenant middleware.
+*   **Reference:** See TASK-009 for full specification.
 
 ---
 
@@ -130,8 +143,21 @@ Permissions are derived via a strictly ordered hierarchy.
 *   **Syntax:** `CREATE UNIQUE INDEX idx_name ON table(col) WHERE is_deleted = FALSE;`
 
 ### 4.3 Temporal Governance
-*   **Storage:** `TIMESTAMP WITHOUT TIME ZONE` (UTC).
-*   **Display:** App converts to `Asia/Kuala_Lumpur`.
+
+**Storage:** `TIMESTAMP WITHOUT TIME ZONE`
+
+**Default Patterns (Two Standards Exist):**
+
+| Module | Default Expression | Timezone | Status |
+|--------|-------------------|----------|--------|
+| **Portal Routing** | `DEFAULT (now() AT TIME ZONE 'utc')` | UTC-normalized | ✅ Standard for new tables |
+| **UAM/RBAC** | `DEFAULT now()` | Server timezone (MYT) | ⚠️ Legacy, migration planned |
+
+**Rules:**
+*   **New Tables:** Use Portal Routing style (`(now() AT TIME ZONE 'utc')`)
+*   **Server Timezone:** `Asia/Kuala_Lumpur` (configured in `postgresql.conf`)
+*   **Display:** App converts to user timezone
+*   **`updated_at`:** App-managed on every mutation (no DB trigger in Phase 1)
 
 ---
 
@@ -143,7 +169,13 @@ Permissions are derived via a strictly ordered hierarchy.
 | **Delete Client** | **BLOCKED.** Must delete Projects first. (Safety) |
 | **Delete Project** | **CASCADES** to Mappings & Assignments. (Cleanup) |
 | **Delete Mapping** | **ISOLATED.** Project remains active. (Safety Net) |
-| **Delete User** | **BLOCKED** if they have active Assignments. |
+| **Delete User** | **BLOCKED** if they have active Assignments. (Soft-delete only) |
+| **Delete Feature** | **BLOCKED** if client_features/overrides exist. (Soft-delete only) |
+
+### 5.2 Soft Delete Convention
+*   Users, Clients, Projects, Features: **Soft-delete only** (`is_deleted = TRUE`)
+*   User Feature Overrides: **Hard delete** (row removal = inherit)
+*   FK constraints with `ON DELETE RESTRICT` provide safety net
 
 ---
 
@@ -158,13 +190,32 @@ Permissions are derived via a strictly ordered hierarchy.
 *   **Validation:** Portal validates token signature using Broker's Public Key (JWKS).
 *   **Storage:** Access Token (Memory), Refresh Token (HTTP-Only Cookie).
 
-### 6.3 Tenant Resolution Priority
-How the system determines the context for a request:
-1.  **Priority 1:** JWT Claim `tid` (Tenant ID/Code).
-2.  **Priority 2:** HTTP Header `X-Tenant`.
-3.  **Priority 3:** Query Parameter `?tenantId=...` (Webhooks only).
-*   **Mapping:** The `tid` claim value maps to `clients.code` in the database.
-*   **No Tenant Found:** Sets context to "Unknown", logs warning, but continues pipeline (doesn't fail request).
+### 6.3 Tenant Resolution (Current Reality)
+
+**⚠️ Known Issue:** Due to middleware ordering, JWT `tid` claim check runs BEFORE `UseAuthentication()`, making it effectively dead code for authenticated requests.
+
+**Actual Priority (Current Behavior):**
+1.  **Priority 1:** HTTP Header `X-Tenant` (authenticated & unauthenticated)
+2.  **Priority 2:** Query Parameter `?tenantId=...` (Webhooks/callbacks only)
+
+**Critical Distinction:**
+*   `tid` claim = SSO application tenant (always `RGT_SPACE_PORTAL`) — **NOT a client identifier**
+*   `clients.code` = Business organization (e.g., `ACME`, `TOYOTA`)
+*   **Client context for business logic** must be derived from:
+    - Route parameters (`/clients/{clientId}/...`)
+    - Database lookups (`projects.client_id`)
+    - NOT from tenant middleware
+
+**No Tenant Found:** Sets context to "Unknown", logs warning, continues pipeline (doesn't fail request).
+
+### 6.4 Client Context vs Tenant Context
+
+| Context Type | Source | Used For |
+|--------------|--------|----------|
+| **Tenant** (`ITenantProvider.Id`) | X-Tenant header / query param | Legacy Sales DB routing, audit logging |
+| **Client** (explicit `clientId`) | Route param / DB lookup | Feature flags, business data isolation |
+
+🚨 **New features (like Feature Flags) must use explicit Client context, not Tenant middleware.**
 
 ---
 
@@ -174,6 +225,26 @@ How the system determines the context for a request:
 *   **JSON:** `camelCase` (`isActive`, `projectId`)
 *   **C#:** `PascalCase` (`IsActive`, `ProjectId`)
 *   **API Lookups:** ALWAYS query by UUID (`/api/projects/{id}`). NEVER by Name.
+*   **Feature Codes:** `UPPER_SNAKE_CASE` (`DASHBOARD_V2`, `SYS_COMBO_BREAK`)
+
+---
+
+## 8. ⚠️ Known Technical Debt
+
+### 8.1 SalesReadDac Tenant Trust
+**Risk:** Authenticated user can spoof `X-Tenant` header to query different tenant's Sales database.  
+**Root Cause:** Tenant derived from header, not validated JWT claim.  
+**Status:** Tracked in security backlog.  
+**Mitigation:** Feature flags explicitly avoid this pattern by using explicit `clientId`.
+
+### 8.2 TenantResolutionMiddleware Order
+**Issue:** JWT `tid` claim check is effectively dead code (runs before authentication).  
+**Impact:** Authenticated requests use header-derived tenant.  
+**Status:** Documented. No immediate security risk for Portal Routing (client context is explicit).
+
+### 8.3 Timestamp Convention Inconsistency
+**Issue:** Two different default patterns exist (UTC vs server timezone).  
+**Status:** New tables use UTC-normalized. UAM/RBAC migration deferred.
 
 ---
 

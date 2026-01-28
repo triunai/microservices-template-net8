@@ -37,7 +37,15 @@ namespace Rgt.Space.Infrastructure.Persistence.Dac
         {
             _connFactory = connFactory;
             _tenant = tenant;
+            
+            // PATTERN B: MultiTenantResilience
+            // We use ResiliencePipelineRegistry here because we need a distinct pipeline 
+            // per Tenant ID (for isolated circuit breaker state).
+            // Since Tenant IDs are dynamic and not known at startup, we cannot use 
+            // the static injection pattern (Pattern A).
+            // Instead, we inject the Registry and lazy-load/create pipelines on demand.
             _pipelineRegistry = pipelineRegistry;
+            
             _resilienceSettings = resilienceSettings;
             _logger = logger;
         }
@@ -74,11 +82,13 @@ namespace Rgt.Space.Infrastructure.Persistence.Dac
                 await using var conn = new NpgsqlConnection(connectionString);
                 await conn.OpenAsync(token); // Propagate cancellation token
 
-                using var multi = await conn.QueryMultipleAsync(
+                var cmd = new CommandDefinition(
                     StoredProcedureNames.GetSaleWithItems, // multi result set return, one "head" + one "items"
                     new { SaleId = saleId },
                     commandType: CommandType.StoredProcedure,
-                    commandTimeout: SqlConstants.CommandTimeouts.TenantDb);
+                    commandTimeout: SqlConstants.CommandTimeouts.TenantDb,
+                    cancellationToken: token);
+                using var multi = await conn.QueryMultipleAsync(cmd);
 
                 var head = await multi.ReadFirstOrDefaultAsync<_Head>();
                 if (head is null)

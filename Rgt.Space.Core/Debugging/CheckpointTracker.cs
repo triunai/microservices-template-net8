@@ -42,24 +42,28 @@ public sealed class CheckpointTracker : ICheckpointTracker
     /// <inheritdoc />
     public void Enter(string checkpoint)
     {
-        // Guard against null/empty checkpoints
+        // Normalize empty/null to a low-cardinality placeholder instead of skipping
+        // ✅ CRITICAL: Never skip push — InStep() will always call Complete()/Fail()
+        // If we skip push but Complete() still pops, we corrupt the stack!
         if (string.IsNullOrWhiteSpace(checkpoint))
         {
-            return; // Silently skip invalid checkpoints
+            checkpoint = "checkpoint:(empty)";
         }
         
-        // Enforce bounded nesting to prevent unbounded memory growth
-        if (_stack.Count >= MaxStackDepth)
-        {
-            // Skip tracking deeper nesting rather than crash
-            return;
-        }
-        
+        // ✅ ALWAYS push to preserve stack balance (never no-op)
         _stack.Push(checkpoint);
         _lastUpdatedAt = DateTimeOffset.UtcNow;
         
-        // Use Activity TAGS (not Events) to avoid high cardinality in traces
-        Activity.Current?.SetTag("checkpoint.current", checkpoint);
+        // Only set Activity tag if within display limit (telemetry bounded, stack is not)
+        if (_stack.Count <= MaxStackDepth)
+        {
+            Activity.Current?.SetTag("checkpoint.current", checkpoint);
+        }
+        else
+        {
+            // Signal overflow but DON'T corrupt stack — push already happened
+            Activity.Current?.SetTag("checkpoint.overflow", true);
+        }
     }
 
     /// <inheritdoc />
@@ -91,13 +95,21 @@ public sealed class CheckpointTracker : ICheckpointTracker
         
         _lastUpdatedAt = DateTimeOffset.UtcNow;
         
-        var failedAt = suffix != null 
-            ? $"{Current}:{suffix}" 
-            : Current;
+        // Null-safe formatting: avoid ":exception" when Current is null
+        var failedAt = Current switch
+        {
+            null when suffix != null => suffix,             // null + suffix → just suffix
+            null => null,                                   // null + no suffix → null
+            _ when suffix != null => $"{Current}:{suffix}", // "step:X:exception"
+            _ => Current                                    // just "step:X"
+        };
         
         // Add failure event (events are OK for failures - low cardinality)
-        Activity.Current?.AddEvent(new ActivityEvent($"failed:{failedAt}"));
-        Activity.Current?.SetTag("checkpoint.broken", failedAt);
+        if (!string.IsNullOrEmpty(failedAt))
+        {
+            Activity.Current?.AddEvent(new ActivityEvent($"failed:{failedAt}"));
+            Activity.Current?.SetTag("checkpoint.broken", failedAt);
+        }
     }
 
     /// <inheritdoc />

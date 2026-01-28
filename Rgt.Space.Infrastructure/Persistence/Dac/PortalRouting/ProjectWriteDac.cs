@@ -31,13 +31,15 @@ public sealed class ProjectWriteDac : IProjectWriteDac
         await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync(token); // Propagate cancellation to connection open
+            
             const string sql = @"
                 INSERT INTO projects (id, client_id, name, code, status, external_url, created_by, updated_by) 
                 VALUES (@Id, @ClientId, @Name, @Code, @Status, @ExternalUrl, @CreatedBy, @CreatedBy)";
 
             try
             {
-                await conn.ExecuteAsync(sql, new
+                var p = new
                 {
                     Id = id,
                     ClientId = clientId,
@@ -46,7 +48,9 @@ public sealed class ProjectWriteDac : IProjectWriteDac
                     Status = status,
                     ExternalUrl = externalUrl,
                     CreatedBy = createdBy
-                });
+                };
+                var cmd = new CommandDefinition(sql, p, cancellationToken: token);
+                await conn.ExecuteAsync(cmd);
             }
             catch (PostgresException ex) when (ex.SqlState == "23505") // Unique violation
             {
@@ -65,6 +69,8 @@ public sealed class ProjectWriteDac : IProjectWriteDac
         await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync(token); // Propagate cancellation to connection open
+            
             const string sql = @"
                 UPDATE projects 
                 SET name = @Name, code = @Code, status = @Status, external_url = @ExternalUrl, updated_by = @UpdatedBy, updated_at = NOW() AT TIME ZONE 'utc'
@@ -72,7 +78,7 @@ public sealed class ProjectWriteDac : IProjectWriteDac
 
             try
             {
-                await conn.ExecuteAsync(sql, new
+                var p = new
                 {
                     Id = id,
                     Name = name,
@@ -80,7 +86,9 @@ public sealed class ProjectWriteDac : IProjectWriteDac
                     Status = status,
                     ExternalUrl = externalUrl,
                     UpdatedBy = updatedBy
-                });
+                };
+                var cmd = new CommandDefinition(sql, p, cancellationToken: token);
+                await conn.ExecuteAsync(cmd);
             }
             catch (PostgresException ex) when (ex.SqlState == "23505") // Unique violation
             {
@@ -111,7 +119,8 @@ public sealed class ProjectWriteDac : IProjectWriteDac
                     SET is_deleted = TRUE, deleted_by = @DeletedBy, deleted_at = NOW() AT TIME ZONE 'utc'
                     WHERE id = @Id AND is_deleted = FALSE";
                 
-                await conn.ExecuteAsync(deleteProjectSql, new { Id = id, DeletedBy = deletedBy }, transaction);
+                var deleteProjectCmd = new CommandDefinition(deleteProjectSql, new { Id = id, DeletedBy = deletedBy }, transaction: transaction, cancellationToken: token);
+                await conn.ExecuteAsync(deleteProjectCmd);
 
                 // 2. Cascade soft delete to mappings
                 const string deleteMappingsSql = @"
@@ -119,7 +128,8 @@ public sealed class ProjectWriteDac : IProjectWriteDac
                     SET is_deleted = TRUE, deleted_by = @DeletedBy, deleted_at = NOW() AT TIME ZONE 'utc'
                     WHERE project_id = @Id AND is_deleted = FALSE";
                 
-                await conn.ExecuteAsync(deleteMappingsSql, new { Id = id, DeletedBy = deletedBy }, transaction);
+                var deleteMappingsCmd = new CommandDefinition(deleteMappingsSql, new { Id = id, DeletedBy = deletedBy }, transaction: transaction, cancellationToken: token);
+                await conn.ExecuteAsync(deleteMappingsCmd);
 
                 // 3. Cascade soft delete to assignments
                 const string deleteAssignmentsSql = @"
@@ -127,7 +137,8 @@ public sealed class ProjectWriteDac : IProjectWriteDac
                     SET is_deleted = TRUE, deleted_by = @DeletedBy, deleted_at = NOW() AT TIME ZONE 'utc'
                     WHERE project_id = @Id AND is_deleted = FALSE";
 
-                await conn.ExecuteAsync(deleteAssignmentsSql, new { Id = id, DeletedBy = deletedBy }, transaction);
+                var deleteAssignmentsCmd = new CommandDefinition(deleteAssignmentsSql, new { Id = id, DeletedBy = deletedBy }, transaction: transaction, cancellationToken: token);
+                await conn.ExecuteAsync(deleteAssignmentsCmd);
 
                 await transaction.CommitAsync(token);
             }

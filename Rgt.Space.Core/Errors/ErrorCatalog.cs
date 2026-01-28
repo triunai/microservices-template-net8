@@ -105,6 +105,29 @@
         }
         
         /// <summary>
+        /// Determines if an error should be recorded by the Combo-Break Debugger.
+        /// Used by Phase 2 recorder to filter out routine/expected errors.
+        /// 
+        /// Records: System errors (5xx), unexpected 4xx (403, 409, 422)
+        /// Skips: Validation errors (400), Not Found (404)
+        /// </summary>
+        public static bool IsRecordableError(string errorCode)
+        {
+            var statusCode = GetStatusCode(errorCode);
+            
+            // Always record system errors (5xx)
+            if (statusCode >= 500) return true;
+            
+            // Skip routine client errors
+            if (IsValidationError(errorCode)) return false;  // 400s from validation
+            if (statusCode == 404) return false;              // Not found is expected
+            
+            // Record unexpected 4xx (403 Forbidden, 409 Conflict, 422 Unprocessable)
+            // These often indicate bugs or security issues worth investigating
+            return true;
+        }
+        
+        /// <summary>
         /// Maps error codes to HTTP status codes.
         /// This provides a single source of truth for status code mapping.
         /// </summary>

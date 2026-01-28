@@ -80,4 +80,10 @@ public sealed record ComboBreakSnapshot
     /// User identifier (safe GUID, no PII).
     /// </summary>
     public Guid? UserId { get; init; }
+    
+    /// <summary>
+    /// Combo position information (Phase 3).
+    /// Null if no combo is declared for this handler or ComboMeter is disabled.
+    /// </summary>
+    public ComboPosition? ComboPosition { get; init; }
 }

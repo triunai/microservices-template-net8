@@ -39,13 +39,15 @@ public sealed class ClientProjectMappingWriteDac : IClientProjectMappingWriteDac
                     (uuid_generate_v7(), @ProjectId, @RoutingUrl, @Environment, 'Active', now(), @CreatedBy, now(), @CreatedBy, false)
                 RETURNING id";
 
-            return await conn.ExecuteScalarAsync<Guid>(sql, new
+            var p = new
             {
                 ProjectId = projectId,
                 RoutingUrl = routingUrl,
                 Environment = environment,
                 CreatedBy = createdBy
-            });
+            };
+            var cmd = new CommandDefinition(sql, p, cancellationToken: token);
+            return await conn.ExecuteScalarAsync<Guid>(cmd);
         }, ct);
     }
 
@@ -66,14 +68,16 @@ public sealed class ClientProjectMappingWriteDac : IClientProjectMappingWriteDac
                     updated_by = @UpdatedBy
                 WHERE id = @Id AND is_deleted = FALSE";
 
-            await conn.ExecuteAsync(sql, new
+            var p = new
             {
                 Id = id,
                 RoutingUrl = routingUrl,
                 Environment = environment,
                 Status = status,
                 UpdatedBy = updatedBy
-            });
+            };
+            var cmd = new CommandDefinition(sql, p, cancellationToken: token);
+            await conn.ExecuteAsync(cmd);
         }, ct);
     }
 
@@ -94,7 +98,8 @@ public sealed class ClientProjectMappingWriteDac : IClientProjectMappingWriteDac
                     updated_by = @DeletedBy
                 WHERE id = @Id AND is_deleted = FALSE";
 
-            await conn.ExecuteAsync(sql, new { Id = id, DeletedBy = deletedBy });
+            var cmd = new CommandDefinition(sql, new { Id = id, DeletedBy = deletedBy }, cancellationToken: token);
+            await conn.ExecuteAsync(cmd);
         }, ct);
     }
 }

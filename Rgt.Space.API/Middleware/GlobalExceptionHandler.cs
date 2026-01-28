@@ -59,6 +59,9 @@ namespace Rgt.Space.API.Middleware
                     httpContext,
                     exception,
                     includeDetails);
+                
+                // Phase 2: Record combo break (if error is recordable)
+                RecordComboBreak(httpContext, exception, problemDetails, checkpointCurrent, checkpointLast);
             }
 
             // Set response status code
@@ -165,6 +168,95 @@ namespace Rgt.Space.API.Middleware
             problemDetails.Extensions["expectedFormat"] = "GUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)";
 
             return problemDetails;
+        }
+        
+        /// <summary>
+        /// Records a combo break snapshot if the error is recordable.
+        /// Uses ErrorCatalog.IsRecordableError() to filter routine errors.
+        /// </summary>
+        private void RecordComboBreak(
+            HttpContext httpContext,
+            Exception exception,
+            Microsoft.AspNetCore.Mvc.ProblemDetails problemDetails,
+            string? checkpointCurrent,
+            string? checkpointLast)
+        {
+            try
+            {
+                // Get error code from exception or ProblemDetails
+                var errorCode = exception is AppException appEx
+                    ? appEx.ErrorCode
+                    : problemDetails.Extensions.TryGetValue("errorCode", out var ec) 
+                        ? ec?.ToString() ?? ErrorCatalog.INTERNAL_ERROR
+                        : ErrorCatalog.INTERNAL_ERROR;
+                
+                // Check if this error should be recorded
+                if (!ErrorCatalog.IsRecordableError(errorCode))
+                {
+                    return;
+                }
+                
+                // Get recorder (may be NullComboBreakRecorder in production)
+                var recorder = httpContext.RequestServices.GetService<IComboBreakRecorder>();
+                if (recorder == null) return;
+                
+                // Extract route template (low-cardinality) instead of raw path
+                var endpoint = httpContext.GetEndpoint() as Microsoft.AspNetCore.Routing.RouteEndpoint;
+                var route = endpoint?.RoutePattern?.RawText
+                            ?? httpContext.Request.Path.Value
+                            ?? "unknown";
+                
+                // Get handler name (stored by CheckpointPipelineBehavior)
+                var handlerName = httpContext.Items[HttpConstants.ContextKeys.CurrentHandlerName]?.ToString() ?? "unknown";
+                
+                // Get context values
+                var correlationId = httpContext.Items[HttpConstants.ContextKeys.CorrelationId]?.ToString() ?? "unknown";
+                var tenantId = httpContext.Items[HttpConstants.ContextKeys.TenantId]?.ToString();
+                
+                // Extract user ID safely (GUID only, no PII)
+                Guid? userId = null;
+                var userIdClaim = httpContext.User?.FindFirst("x-local-user-id")?.Value;
+                if (Guid.TryParse(userIdClaim, out var parsedUserId))
+                {
+                    userId = parsedUserId;
+                }
+                
+                // Phase 3: Calculate combo position (if ComboMeter is enabled)
+                Core.Debugging.ComboPosition? comboPosition = null;
+                var comboMapProvider = httpContext.RequestServices.GetService<IComboMapProvider>();
+                if (comboMapProvider != null)
+                {
+                    comboPosition = Core.Debugging.ComboPositionCalculator.Calculate(
+                        comboMapProvider,
+                        handlerName,
+                        checkpointCurrent,
+                        checkpointLast);
+                }
+                
+                // Create and record snapshot
+                var snapshot = new Core.Debugging.ComboBreakSnapshot
+                {
+                    CorrelationId = correlationId,
+                    Timestamp = DateTimeOffset.UtcNow,
+                    CheckpointCurrent = checkpointCurrent,
+                    CheckpointLast = checkpointLast,
+                    TraceId = System.Diagnostics.Activity.Current?.TraceId.ToString(),
+                    SpanId = System.Diagnostics.Activity.Current?.SpanId.ToString(),
+                    Route = route,
+                    Handler = handlerName,
+                    ErrorCode = errorCode,
+                    ErrorMessage = exception.Message,
+                    TenantId = tenantId,
+                    UserId = userId,
+                    ComboPosition = comboPosition
+                };
+                
+                recorder.Record(snapshot);
+            }
+            catch
+            {
+                // Fail-silent: Recording should never break the exception handler
+            }
         }
     }
 }

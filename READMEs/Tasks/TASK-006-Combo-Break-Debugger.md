@@ -1,5 +1,8 @@
 # 🎮 Task: Implement Combo-Break Debugger
 
+**Status:** ✅ COMPLETE (Phase 0-3)  
+**Last Updated:** 2026-01-19
+
 ## 📋 Overview
 Implement a low-friction debugging system that treats requests like fighting-game combos. Each meaningful business step = a checkpoint. If the combo breaks (exception or failed result), we instantly know the last successful checkpoint, the current checkpoint where it broke, and the correlationId/traceId.
 
@@ -11,6 +14,7 @@ Implement a low-friction debugging system that treats requests like fighting-gam
 - **Module**: Cross-Cutting Observability
 - **Pattern**: MediatR Pipeline Behavior + Middleware Enrichment
 - **Integration Points**: CorrelationIdMiddleware, GlobalExceptionHandler, ProblemDetailsFactory, AuditLoggingBehavior
+- **Business Rules**: [COMBO-BREAK-DEBUGGER-RULES.md](../BusinessRules/COMBO-BREAK-DEBUGGER-RULES.md)
 
 ## 📜 Contract Definition (Field Taxonomy)
 
@@ -903,41 +907,67 @@ public async Task<Result<Guid>> Handle(CreateBookingCommand request, Cancellatio
 ## ✅ Verification Checklist
 
 ### Phase 0
-- [ ] `HttpConstants.cs` has new headers and context keys
-- [ ] `ComboBreakSnapshot` compiles and is in correct namespace
-- [ ] Contract uses `Current/Last` (not `Expected/Previous`)
+- [x] `HttpConstants.cs` has new headers and context keys
+- [x] `ComboBreakSnapshot` compiles and is in correct namespace
+- [x] Contract uses `Current/Last` (not `Expected/Previous`)
 
 ### Phase 1
-- [ ] Solution builds without errors
-- [ ] `ICheckpointTracker` registered as Scoped
-- [ ] `CheckpointTracker` uses **stack** for nested step support
-- [ ] `CheckpointTracker` uses **Activity tags** (not events) for low cardinality
-- [ ] `CheckpointPipelineBehavior` runs before `AuditLoggingBehavior`
-- [ ] `CheckpointPipelineBehavior` uses pattern matching for FluentResults
-- [ ] Error response includes `checkpointCurrent` and `checkpointLast` in extensions
-- [ ] Logs show "💥 COMBO BREAK" with checkpoint info
-- [ ] Dev headers only appear in Development environment
-- [ ] Dev headers only appear for 5xx errors (not 400/404)
+- [x] Solution builds without errors
+- [x] `ICheckpointTracker` registered as Scoped
+- [x] `CheckpointTracker` uses **stack** for nested step support
+- [x] `CheckpointTracker` uses **Activity tags** (not events) for low cardinality
+- [x] `CheckpointPipelineBehavior` runs before `AuditLoggingBehavior`
+- [x] `CheckpointPipelineBehavior` uses pattern matching for FluentResults
+- [x] Error response includes `checkpointCurrent` and `checkpointLast` in extensions
+- [x] Logs show "💥 COMBO BREAK" with checkpoint info
+- [x] Dev headers only appear in Development environment
+- [x] Dev headers only appear for 5xx errors (not 400/404)
+- [x] **HOTFIX 2026-01-19:** `Enter()` always pushes (prevents stack corruption)
+- [x] **HOTFIX 2026-01-19:** Headers/ProblemDetails read tracker directly (works for Result.Fail)
+- [x] **HOTFIX 2026-01-19:** `Fail()` handles null Current gracefully
 
 ### Phase 2
 - [ ] `ComboBreakRecorder` uses Interlocked (no Count in loop)
 - [ ] `NullComboBreakRecorder` used in non-Development
 - [ ] `/_debug/combos` returns 403 in Production
 - [ ] Recorder uses **policy-based** failure gate (not just status code)
-- [ ] Recorder skips expected exceptions (NotFoundException, ValidationException)
+- [x] Recorder skips expected exceptions (uses ErrorCatalog.IsRecordableError)
+- [x] **DONE:** Store route template instead of raw path (low-cardinality)
 
-### Phase 3 (Optional)
-- [ ] `ComboMap` provides step lists for critical handlers only
-- [ ] `ComboPosition` computed only when handler has declared combo
-- [ ] "Step 2/7, 5 remaining" only shown for declared flows
+### Phase 3 (Scaffold Complete)
+- [x] `IComboMapProvider` interface for extensibility
+- [x] `NullComboMapProvider` default (no combos = zero overhead)
+- [x] `ExampleComboMapProvider` for development testing
+- [x] `ComboPositionCalculator` pure function with step extraction
+- [x] `ComboPosition` computed at snapshot creation time
+- [x] `BusinessActivitySource` singleton scaffold (configurable name)
+- [x] `ComboBreakDebuggerOptions` config with feature flags
+- [x] "Step 2/7, 5 remaining" shown for declared flows
 
 ### Dev UX Test (Acceptance Criteria)
 When a dev hits an error locally:
-- [ ] Response headers show: `X-Checkpoint-Last`, `X-Checkpoint-Current`, `X-Correlation-Id`
-- [ ] ProblemDetails body includes `checkpointLast`, `checkpointCurrent`
-- [ ] One log line makes the "break point" obvious in under 10 seconds
-- [ ] `/_debug/combos` shows recent failures with full context
-- [ ] **Nested steps** are preserved (inner step shows as Current, handler as history)
+- [x] Response headers show: `X-Checkpoint-Last`, `X-Checkpoint-Current`, `X-Correlation-Id`
+- [x] ProblemDetails body includes `checkpointLast`, `checkpointCurrent`
+- [x] One log line makes the "break point" obvious in under 10 seconds
+- [x] `/_debug/combos` shows recent failures with full context
+- [x] **Nested steps** are preserved (inner step shows as Current, handler as history)
+- [x] **ComboPosition** shows step X of Y when combo is declared
+
+---
+
+## 🔥 2026-01-19 Hotfixes (Post-Review Corrections)
+
+| # | Bug | Severity | Root Cause | Fix Applied |
+|---|-----|----------|------------|-------------|
+| 1 | **Stack corruption on MaxStackDepth** | 🚨 HIGH | `Enter()` skipped push when depth exceeded, but `InStep()` still called `Complete()` → popped parent step | `Enter()` now ALWAYS pushes; telemetry bounded, not stack |
+| 2 | **Headers/ProblemDetails missing for Result.Fail** | ⚠️ MEDIUM | `HttpContext.Items` only populated by `GlobalExceptionHandler` (exceptions only) | Headers middleware + ProblemDetailsFactory now read `ICheckpointTracker` directly |
+| 3 | **`Fail()` produced `:exception` when Current is null** | 🔹 LOW | String formatting `$"{Current}:{suffix}"` when Current is null | Null-safe switch expression |
+| 4 | **Route path high-cardinality** | ✅ DONE | Raw path includes GUIDs | Uses `RouteEndpoint.RoutePattern.RawText` for low-cardinality |
+
+**Files Modified:**
+- `Rgt.Space.Core/Debugging/CheckpointTracker.cs` — Fixes #1, #3
+- `Rgt.Space.API/Middleware/ComboBreakHeadersMiddleware.cs` — Fix #2
+- `Rgt.Space.API/ProblemDetails/ProblemDetailsFactory.cs` — Fix #2
 
 ---
 
@@ -950,7 +980,7 @@ When a dev hits an error locally:
 | 3 | **FluentResults Detection** | `is ResultBase` doesn't match `Result<T>` | Pattern matching: `Result r => r.IsFailed` |
 | 4 | **Policy-Based Failure Gate** | Status code alone is misleading | Check exception type + status code |
 | 5 | **InStep<T> Wrapper (NOT IDisposable)** | `Dispose()` can't detect exceptions → calls `Complete()` on failure 💀 | Async wrapper with try/catch handles both paths |
-| 6 | **Stack Constructor Fix** | `Stack<T>(capacity)` doesn't exist in .NET | Use `new Stack<T>()` + manual depth enforcement |
+| 6 | **~~Stack Constructor Fix~~** | ~~`Stack<T>(capacity)` doesn't exist~~ | **CORRECTION:** `Stack<T>(int)` DOES exist; doc was wrong |
 | 7 | **Checkpoint Naming Convention** | Inconsistent formats break ComboMap matching | Standardized: `step:`, `repo:`, `ext:`, `handler:` |
 | 8 | **ComboMap Matching Logic** | `EndsWith()` is fragile, matches wrong things | `ExtractStepName()` + exact `Array.IndexOf()` |
 | 9 | **Parallel Steps Constraint** | Stack model can't represent parallel work; lock only prevents crash | Explicitly forbid parallel `InStep()` in Phase 1-2 |
@@ -958,43 +988,55 @@ When a dev hits an error locally:
 
 ---
 
-## 📁 File Structure (New Files)
+## 📁 File Structure (All Files)
 
 ```
 Rgt.Space.Core/
 ├── Abstractions/
 │   └── Debugging/
-│       ├── ICheckpointTracker.cs          ← NEW
-│       └── IComboBreakRecorder.cs         ← NEW (Phase 2)
+│       ├── ICheckpointTracker.cs          ← Phase 1
+│       ├── IComboBreakRecorder.cs         ← Phase 2
+│       └── IComboMapProvider.cs           ← Phase 3
+├── Configuration/
+│   └── ComboBreakDebuggerOptions.cs       ← Phase 3
 ├── Debugging/
-│   ├── CheckpointTracker.cs               ← NEW
-│   └── ComboBreakSnapshot.cs              ← NEW
-└── Constants/
-    └── HttpConstants.cs                   ← MODIFIED
+│   ├── CheckpointTracker.cs               ← Phase 1
+│   ├── ComboBreakSnapshot.cs              ← Phase 1+3 (enhanced with ComboPosition)
+│   ├── ComboPosition.cs                   ← Phase 3
+│   ├── ComboPositionCalculator.cs         ← Phase 3
+│   └── NullComboMapProvider.cs            ← Phase 3
+├── Constants/
+│   └── HttpConstants.cs                   ← MODIFIED
+└── Errors/
+    └── ErrorCatalog.cs                    ← MODIFIED (added IsRecordableError)
 
 Rgt.Space.Infrastructure/
 ├── Behaviors/
 │   ├── AuditLoggingBehavior.cs            ← EXISTING
-│   └── CheckpointPipelineBehavior.cs      ← NEW
+│   └── CheckpointPipelineBehavior.cs      ← Phase 1
 ├── Debugging/
-│   ├── ComboBreakRecorder.cs              ← NEW (Phase 2)
-│   └── NullComboBreakRecorder.cs          ← NEW (Phase 2)
+│   ├── ComboBreakRecorder.cs              ← Phase 2
+│   ├── NullComboBreakRecorder.cs          ← Phase 2
+│   └── ExampleComboMapProvider.cs         ← Phase 3
 ├── Observability/
-│   └── TracingExtensions.cs               ← NEW (Phase 3 scaffold)
-└── Extensions.cs                          ← MODIFIED
+│   └── BusinessActivitySource.cs          ← Phase 3 (ActivitySource scaffold)
+└── Extensions.cs                          ← MODIFIED (DI registration)
 
 Rgt.Space.API/
 ├── Middleware/
-│   ├── GlobalExceptionHandler.cs          ← MODIFIED
-│   └── ComboBreakHeadersMiddleware.cs     ← NEW
+│   ├── GlobalExceptionHandler.cs          ← MODIFIED (recording + position calc)
+│   └── ComboBreakHeadersMiddleware.cs     ← Phase 1
 ├── ProblemDetails/
-│   └── ProblemDetailsFactory.cs           ← MODIFIED
+│   └── ProblemDetailsFactory.cs           ← MODIFIED (reads tracker directly)
 ├── Endpoints/
-│   └── Debug/
-│       └── ComboBreak/
-│           ├── GetAllCombosEndpoint.cs    ← NEW (Phase 2)
-│           └── GetComboByIdEndpoint.cs    ← NEW (Phase 2)
-└── Program.cs                             ← MODIFIED
+│   ├── Debug/
+│   │   └── ComboBreak/
+│   │       ├── GetAllCombosEndpoint.cs    ← Phase 2
+│   │       └── GetComboByIdEndpoint.cs    ← Phase 2
+│   └── Debugging/
+│       └── ComboBreakTestEndpoint.cs      ← Test endpoint
+├── appsettings.json                       ← MODIFIED (ComboBreakDebugger section)
+└── Program.cs                             ← MODIFIED (middleware registration)
 ```
 
 ---

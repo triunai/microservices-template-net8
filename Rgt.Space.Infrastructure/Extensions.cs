@@ -16,6 +16,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Hosting;
 using Polly;
 using Polly.Registry;
 using StackExchange.Redis;
@@ -70,6 +71,36 @@ namespace Rgt.Space.Infrastructure
                     logger);
             });
 
+            // Register System pipeline (alias for MasterDb settings, used by Identity/System DACs)
+            services.AddResiliencePipeline("System", (builder, context) =>
+            {
+                // Usage: Static system-level queries (Users, Roles, etc)
+                // Config: Uses MasterDb settings (CRITICAL reliability)
+                var settings = context.ServiceProvider.GetRequiredService<IOptions<ResilienceSettings>>().Value.MasterDb;
+                var logger = context.ServiceProvider.GetRequiredService<ILogger<SystemConnectionFactory>>();
+
+                builder.AddPipelineFromSettings(
+                    settings,
+                    ResiliencePolicies.IsSqlTransientError,
+                    "System",
+                    logger);
+            });
+
+            // Register AuditDb pipeline (single-database for Audit Logs)
+            services.AddResiliencePipeline("AuditDb", (builder, context) =>
+            {
+                // Usage: Write-heavy, non-critical audit logs
+                // Config: Uses AuditDb settings
+                var settings = context.ServiceProvider.GetRequiredService<IOptions<ResilienceSettings>>().Value.AuditDb;
+                var logger = context.ServiceProvider.GetRequiredService<ILogger<AuditLogger>>();
+
+                builder.AddPipelineFromSettings(
+                    settings,
+                    ResiliencePolicies.IsSqlTransientError,
+                    "AuditDb",
+                    logger);
+            });
+
             services.AddResiliencePipeline(ResiliencePolicies.RedisKey, (builder, context) =>
             {
                 var settings = context.ServiceProvider.GetRequiredService<IOptions<ResilienceSettings>>().Value.Redis;
@@ -100,6 +131,42 @@ namespace Rgt.Space.Infrastructure
             
             // Combo-Break Debugger: Request-scoped checkpoint tracker
             services.AddScoped<ICheckpointTracker, CheckpointTracker>();
+            
+            // Combo-Break Debugger: DAC layer tracking executor (TASK-007)
+            services.AddScoped<Persistence.TrackedDacExecutor>();
+            
+            // Combo-Break Debugger: Bind configuration options
+            services.Configure<Core.Configuration.ComboBreakDebuggerOptions>(
+                configuration.GetSection(Core.Configuration.ComboBreakDebuggerOptions.SectionName));
+            
+            // Combo-Break Debugger: Phase 2 - In-memory recorder (dev-only)
+            // Production uses NullComboBreakRecorder (zero memory overhead)
+            services.AddSingleton<IComboBreakRecorder>(sp =>
+            {
+                var env = sp.GetRequiredService<IHostEnvironment>();
+                return env.IsDevelopment()
+                    ? new Debugging.ComboBreakRecorder()
+                    : new Debugging.NullComboBreakRecorder();
+            });
+            
+            // Combo-Break Debugger: Phase 3 - Combo map provider
+            // In Development: Use ExampleComboMapProvider for testing
+            // In Production: Use NullComboMapProvider (no combos = no overhead)
+            // Solutions can override with their own AppComboMapProvider
+            services.AddSingleton<IComboMapProvider>(sp =>
+            {
+                var env = sp.GetRequiredService<IHostEnvironment>();
+                return env.IsDevelopment()
+                    ? new Debugging.ExampleComboMapProvider()
+                    : new NullComboMapProvider();
+            });
+            
+            // Combo-Break Debugger: Configure ActivitySource (Phase 3)
+            var debuggerOptions = configuration
+                .GetSection(Core.Configuration.ComboBreakDebuggerOptions.SectionName)
+                .Get<Core.Configuration.ComboBreakDebuggerOptions>() 
+                ?? new Core.Configuration.ComboBreakDebuggerOptions();
+            Observability.BusinessActivitySource.Configure(debuggerOptions);
 
             // Redis distributed cache with lazy singleton (ready for future use: product catalog, sessions)
             // Lazy connection - connects on first use, doesn't block startup

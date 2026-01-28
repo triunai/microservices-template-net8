@@ -16,48 +16,25 @@ namespace Rgt.Space.Infrastructure.Persistence.Dac.Dashboard;
 public sealed class DashboardReadDac : IDashboardReadDac
 {
     private readonly ISystemConnectionFactory _connFactory;
-    private readonly ResiliencePipelineRegistry<string> _pipelineRegistry;
-    private readonly IOptions<ResilienceSettings> _resilienceSettings;
+    private readonly ResiliencePipeline _pipeline;
     private readonly ILogger<DashboardReadDac> _logger;
 
     public DashboardReadDac(
         ISystemConnectionFactory connFactory,
-        ResiliencePipelineRegistry<string> pipelineRegistry,
-        IOptions<ResilienceSettings> resilienceSettings,
+        ResiliencePipelineProvider<string> pipelineProvider,
         ILogger<DashboardReadDac> logger)
     {
         _connFactory = connFactory;
-        _pipelineRegistry = pipelineRegistry;
-        _resilienceSettings = resilienceSettings;
+        // Standard Pattern A: Inject and use the pre-registered "System" pipeline
+        _pipeline = pipelineProvider.GetPipeline("System");
         _logger = logger;
-    }
-
-    private ResiliencePipeline GetPipeline()
-    {
-        const string pipelineKey = "System";
-        
-        if (!_pipelineRegistry.TryGetPipeline(pipelineKey, out var pipeline))
-        {
-            _pipelineRegistry.TryAddBuilder(pipelineKey, (builder, context) =>
-            {
-                var settings = _resilienceSettings.Value.MasterDb;
-                builder.AddPipelineFromSettings(
-                    settings,
-                    ResiliencePolicies.IsSqlTransientError,
-                    $"Db:{pipelineKey}",
-                    _logger);
-            });
-            pipeline = _pipelineRegistry.GetPipeline(pipelineKey);
-        }
-        return pipeline;
     }
 
     public async Task<DashboardStatsResponse> GetStatsAsync(CancellationToken ct)
     {
-        var pipeline = GetPipeline();
         var connString = await _connFactory.GetConnectionStringAsync(ct);
 
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
             await conn.OpenAsync(token);
@@ -95,7 +72,8 @@ public sealed class DashboardReadDac : IDashboardReadDac
                            AND p.is_deleted = FALSE)
                     ) as PendingVacancies";
 
-            var kpis = await conn.QuerySingleAsync<DashboardKpis>(kpiSql);
+            var kpiCmd = new CommandDefinition(kpiSql, cancellationToken: token);
+            var kpis = await conn.QuerySingleAsync<DashboardKpis>(kpiCmd);
 
             // 2. Assignment Distribution
             const string distSql = @"
@@ -105,7 +83,8 @@ public sealed class DashboardReadDac : IDashboardReadDac
                 GROUP BY position_code
                 ORDER BY Count DESC";
 
-            var distribution = (await conn.QueryAsync<AssignmentDistribution>(distSql)).ToList();
+            var distCmd = new CommandDefinition(distSql, cancellationToken: token);
+            var distribution = (await conn.QueryAsync<AssignmentDistribution>(distCmd)).ToList();
 
             // 3. Top Vacancies (Projects missing mandatory roles)
             // This is a bit complex to do purely in SQL efficiently, 
@@ -138,7 +117,8 @@ public sealed class DashboardReadDac : IDashboardReadDac
                 ORDER BY pr.name
                 LIMIT 10";
 
-            var vacancies = (await conn.QueryAsync<VacantPosition>(vacancySql)).ToList();
+            var vacancyCmd = new CommandDefinition(vacancySql, cancellationToken: token);
+            var vacancies = (await conn.QueryAsync<VacantPosition>(vacancyCmd)).ToList();
 
             return new DashboardStatsResponse
             {

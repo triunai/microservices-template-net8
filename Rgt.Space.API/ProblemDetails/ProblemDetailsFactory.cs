@@ -119,15 +119,26 @@ namespace Rgt.Space.API.ProblemDetails
             }
             
             // Add checkpoint info (for Combo-Break Debugger)
-            // Note: These are stored by GlobalExceptionHandler from ICheckpointTracker
-            if (httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CheckpointCurrent, out var checkpointCurrent))
+            // ✅ FIX: Read tracker directly first (works for Result.Fail), Items fallback for edge cases
+            var tracker = httpContext.RequestServices.GetService<Rgt.Space.Core.Abstractions.Debugging.ICheckpointTracker>();
+            if (tracker != null)
             {
-                problemDetails.Extensions["checkpointCurrent"] = checkpointCurrent?.ToString();
+                // Tracker is available — use it directly (works for exceptions AND Result.Fail)
+                problemDetails.Extensions["checkpointCurrent"] = tracker.Current;
+                problemDetails.Extensions["checkpointLast"] = tracker.Last;
             }
-            
-            if (httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CheckpointLast, out var checkpointLast))
+            else
             {
-                problemDetails.Extensions["checkpointLast"] = checkpointLast?.ToString();
+                // Fallback to Items (legacy path, should rarely happen)
+                if (httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CheckpointCurrent, out var checkpointCurrent))
+                {
+                    problemDetails.Extensions["checkpointCurrent"] = checkpointCurrent?.ToString();
+                }
+                
+                if (httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CheckpointLast, out var checkpointLast))
+                {
+                    problemDetails.Extensions["checkpointLast"] = checkpointLast?.ToString();
+                }
             }
             
             // Add trace ID (for distributed tracing)

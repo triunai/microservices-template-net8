@@ -1,3 +1,4 @@
+using Rgt.Space.Core.Abstractions.Debugging;
 using Rgt.Space.Core.Constants;
 
 namespace Rgt.Space.API.Middleware;
@@ -66,19 +67,21 @@ public sealed class ComboBreakHeadersMiddleware
             return;
         }
         
-        // Add checkpoint headers if available
-        if (context.Items.TryGetValue(HttpConstants.ContextKeys.CheckpointCurrent, out var current) && 
-            current is string currentStr && 
-            !string.IsNullOrEmpty(currentStr))
+        // ✅ FIX: Read tracker directly (works for exceptions AND Result.Fail)
+        // Previously read from Items, which was only populated by GlobalExceptionHandler (exceptions only)
+        var tracker = context.RequestServices.GetService<ICheckpointTracker>();
+        
+        var current = tracker?.Current;  // NO coalescing — null is valuable signal
+        var last = tracker?.Last;
+        
+        if (!string.IsNullOrEmpty(current))
         {
-            context.Response.Headers[HttpConstants.Headers.CheckpointCurrent] = currentStr;
+            context.Response.Headers[HttpConstants.Headers.CheckpointCurrent] = current;
         }
         
-        if (context.Items.TryGetValue(HttpConstants.ContextKeys.CheckpointLast, out var last) && 
-            last is string lastStr && 
-            !string.IsNullOrEmpty(lastStr))
+        if (!string.IsNullOrEmpty(last))
         {
-            context.Response.Headers[HttpConstants.Headers.CheckpointLast] = lastStr;
+            context.Response.Headers[HttpConstants.Headers.CheckpointLast] = last;
         }
         
         // Add trace ID for distributed tracing correlation

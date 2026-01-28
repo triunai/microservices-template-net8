@@ -14,52 +14,28 @@ namespace Rgt.Space.Infrastructure.Persistence.Dac.TaskAllocation;
 public sealed class TaskAllocationWriteDac : ITaskAllocationWriteDac
 {
     private readonly ISystemConnectionFactory _systemConnFactory;
-    private readonly ResiliencePipelineRegistry<string> _pipelineRegistry;
-    private readonly IOptions<ResilienceSettings> _resilienceSettings;
+    private readonly ResiliencePipeline _pipeline;
     private readonly ILogger<TaskAllocationWriteDac> _logger;
 
     public TaskAllocationWriteDac(
         ISystemConnectionFactory systemConnFactory,
-        ResiliencePipelineRegistry<string> pipelineRegistry,
-        IOptions<ResilienceSettings> resilienceSettings,
+        ResiliencePipelineProvider<string> pipelineProvider,
         ILogger<TaskAllocationWriteDac> logger)
     {
         _systemConnFactory = systemConnFactory;
-        _pipelineRegistry = pipelineRegistry;
-        _resilienceSettings = resilienceSettings;
+        // Standard Pattern A: Inject and use the pre-registered "System" pipeline
+        _pipeline = pipelineProvider.GetPipeline("System");
         _logger = logger;
-    }
-
-    private ResiliencePipeline GetPipeline()
-    {
-        // Task Allocation writes are always global/system operations in this context
-        // (assigning a user to a project is a cross-cutting concern)
-        const string pipelineKey = "System";
-
-        if (!_pipelineRegistry.TryGetPipeline(pipelineKey, out var pipeline))
-        {
-            _pipelineRegistry.TryAddBuilder(pipelineKey, (builder, context) =>
-            {
-                var settings = _resilienceSettings.Value.MasterDb;
-                builder.AddPipelineFromSettings(
-                    settings,
-                    ResiliencePolicies.IsSqlTransientError,
-                    $"Db:{pipelineKey}",
-                    _logger);
-            });
-            pipeline = _pipelineRegistry.GetPipeline(pipelineKey);
-        }
-        return pipeline;
     }
 
     public async Task<bool> AssignUserAsync(Guid projectId, Guid userId, string positionCode, Guid? assignedBy, CancellationToken ct)
     {
-        var pipeline = GetPipeline();
         var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
 
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync(token); // Propagate cancellation to connection open
             
             // Atomic Check: Only insert if User is Active
             const string sql = @"
@@ -82,19 +58,21 @@ public sealed class TaskAllocationWriteDac : ITaskAllocationWriteDac
                 DO NOTHING;
             ";
 
-            var rows = await conn.ExecuteAsync(sql, new { ProjectId = projectId, UserId = userId, PositionCode = positionCode, By = assignedBy });
+            var cmd = new CommandDefinition(sql, new { ProjectId = projectId, UserId = userId, PositionCode = positionCode, By = assignedBy }, cancellationToken: token);
+            var rows = await conn.ExecuteAsync(cmd);
             return rows > 0;
         }, ct);
     }
 
     public async Task<bool> UnassignUserAsync(Guid projectId, Guid userId, string positionCode, Guid? unassignedBy, CancellationToken ct)
     {
-        var pipeline = GetPipeline();
         var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
 
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync(token); // Propagate cancellation to connection open
+            
             const string sql = @"
                 UPDATE project_assignments
                 SET 
@@ -108,17 +86,17 @@ public sealed class TaskAllocationWriteDac : ITaskAllocationWriteDac
                     AND is_deleted = FALSE;
             ";
 
-            var rows = await conn.ExecuteAsync(sql, new { ProjectId = projectId, UserId = userId, PositionCode = positionCode, By = unassignedBy });
+            var cmd = new CommandDefinition(sql, new { ProjectId = projectId, UserId = userId, PositionCode = positionCode, By = unassignedBy }, cancellationToken: token);
+            var rows = await conn.ExecuteAsync(cmd);
             return rows > 0;
         }, ct);
     }
 
     public async Task<bool> UpdateAssignmentAsync(Guid projectId, Guid userId, string oldPositionCode, string newPositionCode, Guid? updatedBy, CancellationToken ct)
     {
-        var pipeline = GetPipeline();
         var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
 
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
             await conn.OpenAsync(token);
@@ -140,9 +118,11 @@ public sealed class TaskAllocationWriteDac : ITaskAllocationWriteDac
                         AND is_deleted = FALSE;
                 ";
                 
-                var deletedRows = await conn.ExecuteAsync(deleteSql, 
+                var deleteCmd = new CommandDefinition(deleteSql, 
                     new { ProjectId = projectId, UserId = userId, OldPositionCode = oldPositionCode, By = updatedBy }, 
-                    transaction);
+                    transaction: transaction,
+                    cancellationToken: token);
+                var deletedRows = await conn.ExecuteAsync(deleteCmd);
 
                 if (deletedRows == 0)
                 {
@@ -171,9 +151,11 @@ public sealed class TaskAllocationWriteDac : ITaskAllocationWriteDac
                     DO NOTHING;
                 ";
 
-                var insertedRows = await conn.ExecuteAsync(insertSql, 
+                var insertCmd = new CommandDefinition(insertSql, 
                     new { ProjectId = projectId, UserId = userId, NewPositionCode = newPositionCode, By = updatedBy }, 
-                    transaction);
+                    transaction: transaction,
+                    cancellationToken: token);
+                var insertedRows = await conn.ExecuteAsync(insertCmd);
 
                 await transaction.CommitAsync(token);
                 return true; // Successful update
