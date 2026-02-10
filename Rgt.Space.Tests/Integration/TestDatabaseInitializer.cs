@@ -12,7 +12,13 @@ public static class TestDatabaseInitializer
     {
         "READMEs/SQL/PostgreSQL/Migrations/00-extensions.sql",
         "READMEs/SQL/PostgreSQL/Migrations/01-portal-schema.sql",
-        "READMEs/SQL/PostgreSQL/Migrations/03-portal-routing-schema.sql"
+        "READMEs/SQL/PostgreSQL/Migrations/03-portal-routing-schema.sql",  // BEFORE 02: creates position_types table
+        "READMEs/SQL/PostgreSQL/Migrations/01a-seed-devadmin.sql",         // BEFORE 02: locks DevAdmin ID so 02 skips its random UUID
+        "READMEs/SQL/PostgreSQL/Migrations/02-portal-seed.sql",            // AFTER 03: seeds position_types, modules, roles, user_roles
+        "READMEs/SQL/PostgreSQL/Migrations/06-seed-permissions.sql",       // AFTER 02: cartesian product of resources x actions
+        "READMEs/SQL/PostgreSQL/Migrations/08-fix-overrides-schema.sql",   // AFTER 01: adds updated_at/updated_by to overrides
+        "READMEs/SQL/PostgreSQL/Migrations/09-feature-flags.sql",
+        "READMEs/SQL/PostgreSQL/Migrations/10-feature-flag-seed.sql"       // AFTER 02: references admin user via email lookup
     };
 
     /// <summary>

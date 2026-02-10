@@ -225,8 +225,9 @@ namespace Rgt.Space.Infrastructure
             // Current User Context
             // TODO: Make this configurable via appsettings (e.g., Auth:EnableMockAuth)
             // For now, we default to DevCurrentUser to unblock development
-            services.AddScoped<Core.Abstractions.Identity.ICurrentUser, CurrentUser>(); 
-            // services.AddScoped<Core.Abstractions.Identity.ICurrentUser, DevCurrentUser>();
+            // TODO: Restore CurrentUser after Swagger testing
+            // services.AddScoped<Core.Abstractions.Identity.ICurrentUser, CurrentUser>();
+            services.AddScoped<Core.Abstractions.Identity.ICurrentUser, DevCurrentUser>();
             
             // Register Portal Routing DACs
             services.AddScoped<Core.Abstractions.PortalRouting.IClientReadDac, Persistence.Dac.PortalRouting.ClientReadDac>();
@@ -242,6 +243,13 @@ namespace Rgt.Space.Infrastructure
 
             // Register Dashboard DACs
             services.AddScoped<Core.Abstractions.Dashboard.IDashboardReadDac, Persistence.Dac.Dashboard.DashboardReadDac>();
+
+            // Register Feature Flag DACs
+            services.AddScoped<Core.Abstractions.Features.IFeatureReadDac, Persistence.Dac.Features.FeatureReadDac>();
+            services.AddScoped<Core.Abstractions.Features.IFeatureWriteDac, Persistence.Dac.Features.FeatureWriteDac>();
+
+            // Register Feature Gate Service
+            services.AddScoped<Core.Abstractions.Features.IFeatureGate, Services.Features.FeatureGate>();
 
             // Register Mapperly mappers (singleton - stateless, compile-time generated)
             // Zero runtime overhead, no reflection, just pure generated C# code
