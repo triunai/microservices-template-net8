@@ -446,8 +446,8 @@ public sealed class UserReadDac : IUserReadDac
                     BOOL_OR(CASE WHEN a.code = 'DELETE' THEN TRUE ELSE FALSE END) as can_delete
                 FROM effective_permissions ep
                 JOIN permissions p ON ep.permission_id = p.id
-                JOIN resources r ON p.resource_id = r.id
-                JOIN modules m ON r.module_id = m.id
+                JOIN resources r ON p.resource_id = r.id AND r.is_deleted = FALSE
+                JOIN modules m ON r.module_id = m.id AND m.is_deleted = FALSE
                 JOIN actions a ON p.action_id = a.id
                 GROUP BY m.code, r.code
                 ORDER BY m.code, r.code";

@@ -12,6 +12,7 @@
 - **Docker**: Redis via docker-compose, PostgreSQL external (Testcontainers for tests)
 - **CI/CD**: GitHub Actions (dependabot configured)
 - **Auth**: `CurrentUser` (JWT-based) ACTIVE in production, `DevCurrentUser` only in tests
+- **Migration load order**: 00 → 01 → 03 → 01a → 02 → 06 → 08 → 09 → 10 → 11 → 12 → 13
 
 ## What's Set Up
 - [x] 5x CLAUDE.md files (root, Core, Infrastructure, API, Tests)
@@ -207,14 +208,23 @@ Restored real JWT auth on all feature flag endpoints:
 
 **146/146 tests green, 0 build errors, 0 warnings**
 
+### Migration 13 + Deep Audit — DONE
+- Created `13-seed-admin-accounts.sql`: FEATURES RBAC module + admin accounts + SYS_ADMIN permissions
+- **Key discovery**: SYS_ADMIN role had ZERO role_permissions before migration 13 — migration 02 created the role, migration 06 generated permissions, but nobody linked them
+- Migration 13 Part 5 grants ALL permissions for ALL modules (PORTAL_ROUTING, TASK_ALLOCATION, USER_MGMT, FEATURES) to SYS_ADMIN
+- Fixed latent bug in `GetPermissionsAsync`: added `is_deleted = FALSE` filter on modules/resources JOINs
+- Deep audit (56-tool agent): 0 critical, 6 warnings, 7 notes, 22 verified — full report at `READMEs/State/MIGRATION-13-AUDIT.md`
+- Admin accounts seeded (all SSO): khumeren@gmail.com, khumeren@rgtech.com.my, kent.tan@rgtech.com.my
+- E2E testing confirmed working — feature flags visible and manipulable via frontend
+
 ---
 
 ## NEXT UP
 
-### Priority 1: End-to-End Testing
-- Verify API runs with `CurrentUser` (JWT-based auth) via Swagger/Postman
-- Test feature flag endpoints require proper JWT + permissions
-- Test eval endpoints work without auth
+### Priority 1: Compact + Next Session Planning
+- E2E testing DONE — feature flags working via frontend with real SSO auth
+- 16 non-feature endpoints need `Permissions()` calls (phased rollout)
+- Phase 3: Entity/SQL alignment (11 mismatches, dead code removal)
 
 ### Priority 2: Phase 3 — Entity/SQL Alignment (separate session)
 1. Fix entity classes to match SQL (Role missing Code, Resource phantom SortOrder, etc.)

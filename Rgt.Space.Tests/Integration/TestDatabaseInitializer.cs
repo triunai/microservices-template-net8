@@ -20,7 +20,8 @@ public static class TestDatabaseInitializer
         "READMEs/SQL/PostgreSQL/Migrations/09-feature-flags.sql",
         "READMEs/SQL/PostgreSQL/Migrations/10-feature-flag-seed.sql",      // AFTER 02: references admin user via email lookup
         "READMEs/SQL/PostgreSQL/Migrations/11-add-missing-fk-indexes.sql", // FK indexes for auth + feature flag hot paths
-        "READMEs/SQL/PostgreSQL/Migrations/12-era1-retrofit.sql"           // Zombie-safe indexes, triggers, timestamp defaults
+        "READMEs/SQL/PostgreSQL/Migrations/12-era1-retrofit.sql",          // Zombie-safe indexes, triggers, timestamp defaults
+        "READMEs/SQL/PostgreSQL/Migrations/13-seed-admin-accounts.sql"     // FEATURES RBAC module + admin accounts + SYS_ADMIN permissions
     };
 
     /// <summary>
