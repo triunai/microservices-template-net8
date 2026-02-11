@@ -147,7 +147,7 @@ public class UserDacIntegrationTests
             INSERT INTO modules (id, name, code) VALUES
             (uuid_generate_v7(), 'Projects', 'PROJECTS'),
             (uuid_generate_v7(), 'Clients', 'CLIENTS')
-            ON CONFLICT (code) DO NOTHING;
+            ON CONFLICT (code) WHERE is_deleted = FALSE DO NOTHING;
 
             INSERT INTO resources (id, module_id, name, code)
             SELECT uuid_generate_v7(), id, 'Project Details', 'PROJECT_DETAILS' FROM modules WHERE code = 'PROJECTS'
@@ -185,7 +185,7 @@ public class UserDacIntegrationTests
             -- 1. Create a Test User
             INSERT INTO users (id, display_name, email, is_active)
             VALUES ('01938567-0000-7000-8000-000000000001', 'Test User', 'test.user@example.com', TRUE)
-            ON CONFLICT (email) DO NOTHING;
+            ON CONFLICT (email) WHERE is_deleted = FALSE DO NOTHING;
 
             -- 2. Create a 'Project Manager' Role
             INSERT INTO roles (id, name, code, is_active)

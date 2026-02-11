@@ -222,12 +222,8 @@ namespace Rgt.Space.Infrastructure
             // Register Auth Services (JWT Token Generation)
             services.AddSingleton<Services.Auth.ITokenService, Services.Auth.TokenService>();
 
-            // Current User Context
-            // TODO: Make this configurable via appsettings (e.g., Auth:EnableMockAuth)
-            // For now, we default to DevCurrentUser to unblock development
-            // TODO: Restore CurrentUser after Swagger testing
-            // services.AddScoped<Core.Abstractions.Identity.ICurrentUser, CurrentUser>();
-            services.AddScoped<Core.Abstractions.Identity.ICurrentUser, DevCurrentUser>();
+            // Current User Context — reads from JWT claims (x-local-user-id, sub, email, tid)
+            services.AddScoped<Core.Abstractions.Identity.ICurrentUser, CurrentUser>();
             
             // Register Portal Routing DACs
             services.AddScoped<Core.Abstractions.PortalRouting.IClientReadDac, Persistence.Dac.PortalRouting.ClientReadDac>();

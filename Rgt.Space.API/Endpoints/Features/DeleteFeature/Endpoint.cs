@@ -12,9 +12,7 @@ public sealed class Endpoint(IMediator mediator, ICurrentUser currentUser) : End
     public override void Configure()
     {
         Delete("/api/v1/features/{featureId:guid}");
-        // TODO: Restore auth after Swagger testing
-        // Permissions(FeatureFlagConstants.Permissions.GlobalEdit);
-        AllowAnonymous();
+        Permissions(FeatureFlagConstants.Permissions.GlobalEdit);
         Summary(s =>
         {
             s.Summary = "Soft-delete a feature flag";

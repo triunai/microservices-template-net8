@@ -1,12 +1,15 @@
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Rgt.Space.Core.Abstractions.Identity;
 using Rgt.Space.Core.Abstractions.Tenancy;
 using Rgt.Space.Core.Domain.Entities.PortalRouting;
+using Rgt.Space.Infrastructure.Identity;
 using Rgt.Space.Tests.Integration.Fixtures;
 
 namespace Rgt.Space.Tests.Integration.Api;
@@ -25,6 +28,19 @@ public class ClientEndpointTests : IClassFixture<CustomWebApplicationFactory>
             {
                 services.RemoveAll<ISystemConnectionFactory>();
                 services.AddSingleton<ISystemConnectionFactory>(new TestSystemConnectionFactory(dbFixture.ConnectionString));
+
+                // Override ICurrentUser with DevCurrentUser (returns hardcoded DevAdmin ID)
+                services.RemoveAll<ICurrentUser>();
+                services.AddScoped<ICurrentUser, DevCurrentUser>();
+
+                // Test auth: auto-authenticate as DevAdmin with all permissions
+                services.AddAuthentication(TestAuthHandler.SchemeName)
+                    .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, null);
+                services.PostConfigure<AuthenticationOptions>(o =>
+                {
+                    o.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
+                    o.DefaultChallengeScheme = TestAuthHandler.SchemeName;
+                });
             });
 
             builder.ConfigureAppConfiguration((context, config) =>

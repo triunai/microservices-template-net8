@@ -13,9 +13,7 @@ public sealed class Endpoint(IMediator mediator, ICurrentUser currentUser) : End
     public override void Configure()
     {
         Put("/api/v1/clients/{clientId:guid}/features/{featureId:guid}");
-        // TODO: Restore auth after Swagger testing
-        // Permissions(FeatureFlagConstants.Permissions.ClientEdit);
-        AllowAnonymous();
+        Permissions(FeatureFlagConstants.Permissions.ClientEdit);
         Summary(s =>
         {
             s.Summary = "Upsert client feature subscription";

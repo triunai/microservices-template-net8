@@ -6,10 +6,12 @@
 `test/rbac-positiontype-verification-8034414594985432536`
 
 ## Project Health
-- **Build**: 0 errors, 0 warnings (verified 2026-02-10)
+- **Build**: 0 errors, 0 warnings (verified 2026-02-11)
 - **Tests**: 97 unit + 49 integration = 146 total, 0 failures
+- **Last commit**: `1c76808` — feat: combo breaker
 - **Docker**: Redis via docker-compose, PostgreSQL external (Testcontainers for tests)
 - **CI/CD**: GitHub Actions (dependabot configured)
+- **Auth**: `CurrentUser` (JWT-based) ACTIVE in production, `DevCurrentUser` only in tests
 
 ## What's Set Up
 - [x] 5x CLAUDE.md files (root, Core, Infrastructure, API, Tests)
@@ -39,11 +41,6 @@ All 4 phases + hardening + integration tests complete.
 5. **Hardening** — 9 fixes, 4 new tests (71 unit total)
 6. **Integration Tests** — 16 DAC tests + 14 endpoint tests (30 new, all green)
 7. **Code Review MEDs** — 5 fixes (sealed records, LIMIT, guard removal, user check, ID source)
-
-### Temporary Auth Bypasses (MUST RESTORE)
-All have `// TODO: Restore auth after Swagger testing` comments:
-- 8 endpoints: `AllowAnonymous()` replacing `Permissions(...)`
-- `Extensions.cs`: `DevCurrentUser` replacing `CurrentUser`
 
 ---
 
@@ -168,32 +165,56 @@ GET /api/v1/features/evaluate?userId={guid}&clientId={guid}
 - Fixed `10-feature-flag-seed.sql` — uses `CROSS JOIN users WHERE email` for audit columns
 - **146/146 tests green**
 
-### New files created
-| File | Purpose |
-|------|---------|
-| `Migrations/01a-seed-devadmin.sql` | Locks DevAdmin ID before migration 02's random UUID |
-| `Migrations/10-feature-flag-seed.sql` | 4 module flags with proper audit column FKs |
-| `SCHEMA-AUDIT-MASTER.md` | Consolidated findings from 5-agent audit |
-| `SCHEMA-DISCOVERY.md` | SQL vs C# cross-check (Shackleton) |
-| `SCHEMA-VALIDATION.md` | FK matrix, constraints, integrity (Nansen) |
-| `SCHEMA-REVIEW.md` | 29 anti-pattern findings (CodeRabbit) |
-| `SCHEMA-INDEX-AUDIT.md` | 6 missing FK indexes identified |
-| `SCHEMA-TEST-GAPS.md` | Migration gap analysis |
-| `SEED-PROMPT-SCHEMA-FIX.md` | Seed prompt for this fix session |
+---
+
+## COMPLETED: TASK-012 — Schema Retrofit + Auth Restore (2026-02-11)
+
+### Phase B: Schema Retrofit — DONE
+Brought Era 1 tables (migration 01) up to Era 2 standards via 2 new migrations:
+
+**Migration 11 — FK indexes** (`11-add-missing-fk-indexes.sql`):
+- 6 indexes on auth/feature-flag hot paths (user_permission_overrides, permissions, resources, user_feature_overrides)
+
+**Migration 12 — Era 1 retrofit** (`12-era1-retrofit.sql`):
+- Part 1: 4 zombie-safe partial index conversions (users.email, users.sso, modules.code, resources.module_id+code)
+- Part 2: 9 `updated_at` triggers (users, modules, resources, actions, permissions, roles, user_permission_overrides, features, client_features)
+- Part 3: 13 timestamp default standardizations (`now()` → `(now() AT TIME ZONE 'utc')`)
+
+**DAC fix**: `ClientProjectMappingWriteDac.cs` — 4 bare `now()` → `(NOW() AT TIME ZONE 'utc')`
+
+**Test fix**: 4 `ON CONFLICT` clauses needed `WHERE is_deleted = FALSE` to match new partial indexes (FeatureEndpointTests, FeatureDacIntegrationTests, UserDacIntegrationTests)
+
+**Migration load order**: `00 → 01 → 03 → 01a → 02 → 06 → 08 → 09 → 10 → 11 → 12`
+
+### Phase A: Auth Restore — DONE
+Restored real JWT auth on all feature flag endpoints:
+
+- **Extensions.cs**: Swapped `DevCurrentUser` → `CurrentUser` (JWT-based)
+- **12 endpoints**: `AllowAnonymous()` → `Permissions(FeatureFlagConstants.Permissions.XXX)`
+- **2 eval endpoints**: Kept `AllowAnonymous()` (frontend needs pre-auth), removed TODO comments
+- **TestAuthHandler**: New test auth handler auto-authenticates as DevAdmin with all feature flag permissions
+- **Test factories**: Both FeatureEndpointTests + ClientEndpointTests override `ICurrentUser` → `DevCurrentUser` + use TestAuthHandler with `PostConfigure<AuthenticationOptions>`
+
+**Permission mapping**:
+| Endpoint | Permission |
+|----------|-----------|
+| GetFeatures, GetFeatureById, GetClientFeatures, GetClientSubscriptions, GetFeatureUserOverrides, GetUserOverrides | `FEATURES.LIST.VIEW` |
+| CreateFeature, UpdateFeature, DeleteFeature | `FEATURES.GLOBAL.EDIT` |
+| UpsertClientFeature | `FEATURES.CLIENT.EDIT` |
+| SetUserOverride | `FEATURES.OVERRIDE.INSERT` |
+| ClearUserOverride | `FEATURES.OVERRIDE.DELETE` |
+| EvaluateFeature, BulkEvaluateFeatures | `AllowAnonymous` |
+
+**146/146 tests green, 0 build errors, 0 warnings**
 
 ---
 
 ## NEXT UP
 
-### Priority 1: Phase 2 — Retrofit Era 1 (~2 hours)
-New migration(s) to bring Era 1 tables up to Era 2 standards:
-1. **Zombie-safe partial indexes** — replace plain UNIQUE on `users.email`, `modules.code`, etc.
-2. **Missing `updated_at` triggers** — 9 tables (users, modules, resources, actions, permissions, roles, user_permission_overrides, features, client_features)
-3. **6 missing FK indexes** — permission loading hot path (`user_permission_overrides.user_id/.permission_id`, etc.)
-4. **Standardize timestamp defaults** — `DEFAULT now()` → `DEFAULT (now() AT TIME ZONE 'utc')`
-5. **Fix `ClientProjectMappingWriteDac.cs`** — bare `now()` → `NOW() AT TIME ZONE 'utc'`
-
-See `SCHEMA-AUDIT-MASTER.md` for full details and agent-drafted migration SQL.
+### Priority 1: End-to-End Testing
+- Verify API runs with `CurrentUser` (JWT-based auth) via Swagger/Postman
+- Test feature flag endpoints require proper JWT + permissions
+- Test eval endpoints work without auth
 
 ### Priority 2: Phase 3 — Entity/SQL Alignment (separate session)
 1. Fix entity classes to match SQL (Role missing Code, Resource phantom SortOrder, etc.)
@@ -201,9 +222,8 @@ See `SCHEMA-AUDIT-MASTER.md` for full details and agent-drafted migration SQL.
 3. Migrate `Guid.NewGuid()` → `Uuid7.NewUuid7()` in older entities
 
 ### Priority 3: Remaining Items
-1. **Restore auth bypasses** on 14 feature flag endpoints + Extensions.cs (grep `// TODO: Restore auth`)
-2. **Tooling setup** — hooks, MCP servers, custom skills
-3. **GET /api/v1/users/{userId}/clients** endpoint (if frontend needs scoped client list)
+1. **Tooling setup** — hooks, MCP servers, custom skills
+2. **GET /api/v1/users/{userId}/clients** endpoint (if frontend needs scoped client list)
 
 ---
 
@@ -215,7 +235,6 @@ See `SCHEMA-AUDIT-MASTER.md` for full details and agent-drafted migration SQL.
 4. RequireHttpsMetadata = false (SSO)
 5. CORS AllowAll (production risk)
 6. FluentAssertions v6 pin (v8 commercial)
-7. **Temporary auth bypasses on 14 feature flag endpoints** (restore after testing)
 
 ## Domains & Endpoint Coverage
 | Domain | Endpoints | Status |

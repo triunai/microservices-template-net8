@@ -12,9 +12,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest<IReadO
     public override void Configure()
     {
         Get("/api/v1/features/{featureId:guid}/clients");
-        // TODO: Restore auth after Swagger testing
-        // Permissions(FeatureFlagConstants.Permissions.ListView);
-        AllowAnonymous();
+        Permissions(FeatureFlagConstants.Permissions.ListView);
         Summary(s =>
         {
             s.Summary = "Get client subscriptions for feature";

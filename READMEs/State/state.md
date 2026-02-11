@@ -93,28 +93,31 @@ Cache invalidation only clears the `IMemoryCache` on the node that handled the a
 
 ---
 
-## Tech Debt: Temporary Auth Bypasses on Feature Flag Endpoints
+## ~~Tech Debt: Temporary Auth Bypasses on Feature Flag Endpoints~~ — RESOLVED (2026-02-11)
 
-**Priority:** High (MUST restore before merge/deploy)
-**Scope:** 8 endpoint files + `Extensions.cs`
+**Status:** RESOLVED via TASK-012 Phase A
+**What was done:**
+- 12 endpoints: `AllowAnonymous()` → `Permissions(FeatureFlagConstants.Permissions.XXX)`
+- 2 eval endpoints: kept `AllowAnonymous()` (frontend pre-auth), TODO comments removed
+- `Extensions.cs`: `DevCurrentUser` → `CurrentUser` (JWT-based)
+- `TestAuthHandler` created for integration tests (auto-authenticates as DevAdmin with all permissions)
+- Both test factories (`FeatureEndpointTests`, `ClientEndpointTests`) override auth scheme + ICurrentUser
+- 146/146 tests green
 
-### Problem
-For Swagger testing, auth was temporarily disabled:
-- 8 feature flag endpoints: `Permissions(...)` → `AllowAnonymous()`
-- `Extensions.cs` line ~228: `CurrentUser` → `DevCurrentUser`
+---
 
-All locations marked with `// TODO: Restore auth after Swagger testing`.
+## ~~Tech Debt: Two-Era Schema (Schema Audit 2026-02-10)~~ — RESOLVED (2026-02-11)
 
-### How to Restore
-```bash
-# Find all affected files
-grep -r "TODO: Restore auth after Swagger testing" --include="*.cs" -l
-# OR
-grep -r "TODO: Restore CurrentUser after Swagger testing" --include="*.cs" -l
-```
-
-### When to Restore
-After Swagger testing is complete and integration tests are written (integration tests handle auth differently via `CustomWebApplicationFactory`).
+**Status:** RESOLVED via TASK-012 Phase B (migration 11 + 12)
+**What was done:**
+- Migration 11: 6 FK indexes on auth/feature-flag hot paths
+- Migration 12 Part 1: 4 zombie-safe partial index conversions (users.email, users.sso, modules.code, resources.module_id+code)
+- Migration 12 Part 2: 9 `updated_at` triggers for Era 1 tables
+- Migration 12 Part 3: 13 timestamp default standardizations
+- `ClientProjectMappingWriteDac.cs`: 4 bare `now()` → `(NOW() AT TIME ZONE 'utc')`
+- 4 test `ON CONFLICT` clauses fixed to match new partial indexes
+- **Remaining (Phase 3, deferred):** Entity/SQL alignment (11 mismatches), dead code removal, Guid.NewGuid → Uuid7 migration
+- **H8 (CASCADE vs RESTRICT):** Not addressed — requires broader migration strategy
 
 ---
 

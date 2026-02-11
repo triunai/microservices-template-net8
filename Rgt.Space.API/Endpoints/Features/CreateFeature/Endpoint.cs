@@ -13,9 +13,7 @@ public sealed class Endpoint(IMediator mediator, ICurrentUser currentUser) : End
     public override void Configure()
     {
         Post("/api/v1/features");
-        // TODO: Restore auth after Swagger testing
-        // Permissions(FeatureFlagConstants.Permissions.GlobalEdit);
-        AllowAnonymous();
+        Permissions(FeatureFlagConstants.Permissions.GlobalEdit);
         Summary(s =>
         {
             s.Summary = "Create a new feature flag";

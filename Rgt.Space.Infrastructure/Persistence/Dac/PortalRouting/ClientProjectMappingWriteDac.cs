@@ -36,7 +36,7 @@ public sealed class ClientProjectMappingWriteDac : IClientProjectMappingWriteDac
                 INSERT INTO client_project_mappings
                     (id, project_id, routing_url, environment, status, created_at, created_by, updated_at, updated_by, is_deleted)
                 VALUES
-                    (uuid_generate_v7(), @ProjectId, @RoutingUrl, @Environment, 'Active', now(), @CreatedBy, now(), @CreatedBy, false)
+                    (uuid_generate_v7(), @ProjectId, @RoutingUrl, @Environment, 'Active', (NOW() AT TIME ZONE 'utc'), @CreatedBy, (NOW() AT TIME ZONE 'utc'), @CreatedBy, false)
                 RETURNING id";
 
             var p = new
@@ -64,7 +64,7 @@ public sealed class ClientProjectMappingWriteDac : IClientProjectMappingWriteDac
                     routing_url = @RoutingUrl,
                     environment = @Environment,
                     status = @Status,
-                    updated_at = now(),
+                    updated_at = (NOW() AT TIME ZONE 'utc'),
                     updated_by = @UpdatedBy
                 WHERE id = @Id AND is_deleted = FALSE";
 
@@ -92,9 +92,9 @@ public sealed class ClientProjectMappingWriteDac : IClientProjectMappingWriteDac
                 UPDATE client_project_mappings
                 SET
                     is_deleted = TRUE,
-                    deleted_at = now(),
+                    deleted_at = (NOW() AT TIME ZONE 'utc'),
                     deleted_by = @DeletedBy,
-                    updated_at = now(),
+                    updated_at = (NOW() AT TIME ZONE 'utc'),
                     updated_by = @DeletedBy
                 WHERE id = @Id AND is_deleted = FALSE";
 

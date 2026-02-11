@@ -11,9 +11,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
     public override void Configure()
     {
         Delete("/api/v1/users/{userId:guid}/feature-overrides/{featureCode}");
-        // TODO: Restore auth after Swagger testing
-        // Permissions(FeatureFlagConstants.Permissions.OverrideDelete);
-        AllowAnonymous();
+        Permissions(FeatureFlagConstants.Permissions.OverrideDelete);
         Summary(s =>
         {
             s.Summary = "Clear user feature override";

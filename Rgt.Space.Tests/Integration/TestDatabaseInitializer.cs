@@ -18,7 +18,9 @@ public static class TestDatabaseInitializer
         "READMEs/SQL/PostgreSQL/Migrations/06-seed-permissions.sql",       // AFTER 02: cartesian product of resources x actions
         "READMEs/SQL/PostgreSQL/Migrations/08-fix-overrides-schema.sql",   // AFTER 01: adds updated_at/updated_by to overrides
         "READMEs/SQL/PostgreSQL/Migrations/09-feature-flags.sql",
-        "READMEs/SQL/PostgreSQL/Migrations/10-feature-flag-seed.sql"       // AFTER 02: references admin user via email lookup
+        "READMEs/SQL/PostgreSQL/Migrations/10-feature-flag-seed.sql",      // AFTER 02: references admin user via email lookup
+        "READMEs/SQL/PostgreSQL/Migrations/11-add-missing-fk-indexes.sql", // FK indexes for auth + feature flag hot paths
+        "READMEs/SQL/PostgreSQL/Migrations/12-era1-retrofit.sql"           // Zombie-safe indexes, triggers, timestamp defaults
     };
 
     /// <summary>

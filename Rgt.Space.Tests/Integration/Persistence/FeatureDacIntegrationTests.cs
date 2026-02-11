@@ -41,7 +41,7 @@ public class FeatureDacIntegrationTests
         await conn.ExecuteAsync(@"
             INSERT INTO users (id, display_name, email, is_active)
             VALUES (@Id, 'Test Admin', @Email, TRUE)
-            ON CONFLICT (email) DO NOTHING",
+            ON CONFLICT (email) WHERE is_deleted = FALSE DO NOTHING",
             new { Id = userId, Email = $"test-{userId:N}@example.com" });
     }
 

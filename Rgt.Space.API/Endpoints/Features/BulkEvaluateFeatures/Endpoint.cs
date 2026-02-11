@@ -11,8 +11,6 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest<BulkEv
     public override void Configure()
     {
         Get("/api/v1/features/evaluate");
-        // TODO: Restore auth after Swagger testing
-        // Permissions(FeatureFlagConstants.Permissions.EvaluateView);
         AllowAnonymous();
         Summary(s =>
         {
