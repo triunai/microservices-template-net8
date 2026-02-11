@@ -219,21 +219,60 @@ Restored real JWT auth on all feature flag endpoints:
 
 ---
 
-## NEXT UP
+## COMPLETED: TASK-013 — Golden Schema + Entity Alignment (2026-02-11)
 
-### Priority 1: Compact + Next Session Planning
-- E2E testing DONE — feature flags working via frontend with real SSO auth
-- 16 non-feature endpoints need `Permissions()` calls (phased rollout)
-- Phase 3: Entity/SQL alignment (11 mismatches, dead code removal)
+### Phase A: Golden Schema Extraction — DONE
+- 2-agent swarm (Era 1 + Era 2) produced 19 golden table files + 2 function files
+- All tables reflect FINAL state after all 13 migrations
+- Every column, index, constraint, trigger annotated with source migration
+- Created `Functions/` folder: `fn_uuid_generate_v7.sql`, `fn_update_timestamp.sql`
+- Deleted 3 junk files: `actions copy.sql`, `UAM-Schema.sql`, `UAM-Tenantless.sql`
+- Spot-checked all 9 auth/permission hot-path tables + 3 feature flag tables against migrations
 
-### Priority 2: Phase 3 — Entity/SQL Alignment (separate session)
-1. Fix entity classes to match SQL (Role missing Code, Resource phantom SortOrder, etc.)
-2. Remove dead code (UserSession, Tenant entity, unused columns)
-3. Migrate `Guid.NewGuid()` → `Uuid7.NewUuid7()` in older entities
+### Phase B: Entity Alignment — DONE
+| Entity | Fix Applied |
+|--------|------------|
+| Role | Added `Code`, `IsActive` properties + factory params |
+| Resource | Removed phantom `SortOrder` property |
+| Module | Added `IsActive` property + factory param |
+| UserPermissionOverride | Added `Reason` property + factory param |
+| Action | Added TODO: SQL no soft-delete, entity inherits AuditableEntity |
+| Permission | Added TODO: SQL no soft-delete, entity inherits AuditableEntity |
+| RolePermission | Added TODO: SQL is 2-col junction, entity has full audit |
+| UserRole | Added TODO: SQL uses assigned_by_user_id, not created_by |
 
-### Priority 3: Remaining Items
-1. **Tooling setup** — hooks, MCP servers, custom skills
-2. **GET /api/v1/users/{userId}/clients** endpoint (if frontend needs scoped client list)
+### Phase C: Convention Cleanup — DONE
+- Fixed `Guid.NewGuid()` → `Uuid7.NewUuid7()` in:
+  - `Entity.cs` base class (affects all entities)
+  - 6 entity Create() methods: Client, Project, ClientProjectMapping, ProjectAssignment, UserSession, Tenant
+  - (Role, Resource, Module, UserPermissionOverride, Action, Permission, RolePermission, UserRole fixed inline during Phase B)
+- **Build: 0 errors** (VS file lock warnings only)
+- **Tests: 146/146 green**
+
+---
+
+## NEXT UP (Post-Demo / SIT Prep)
+
+> Demo-ready as-is: superadmin has all permissions via migration 13.
+> RBAC enforcement only matters when restricted roles exist (SIT).
+
+### SIT Prep: Permission Rollout (~30 min)
+- Add `Permissions()` to 16 non-feature endpoints (Identity, PortalRouting, Roles, Dashboard, TaskAllocation)
+- Not needed for superadmin demo — only blocks restricted roles
+- Do this before deploying to SIT with multiple user roles
+
+### Code Quality (no runtime impact)
+1. **TrackedEntity base class** (~20 min) — new base for tables without soft-delete (Action, Permission, Role). Currently these entities inherit AuditableEntity which gives them phantom `IsDeleted`/`DeletedAt`/`DeletedBy` properties. Dapper ignores them (no runtime impact), but it's misleading code.
+2. **RBAC integration test** (~15 min) — one test using real middleware + DB (not TestAuthHandler) so migration 13 removal would cause a test failure. Safety net only.
+
+### Tooling Setup
+1. **Hooks** — auto-format on edit, block sensitive files (.env, secrets), auto-build on save
+2. **MCP servers** — context7 for live docs, GitHub MCP for PR/issue integration
+3. **Custom skills** — `/gen-test` (generate test from endpoint), `/create-migration` (scaffold migration file)
+4. **Subagent definitions** — `.claude/agents/security-reviewer.md`
+
+### Feature Work
+1. **GET /api/v1/users/{userId}/clients** endpoint (if frontend needs scoped client list)
 
 ---
 

@@ -1,14 +1,17 @@
-
 -- =====================================================
 -- TABLE: user_feature_overrides
 -- Purpose: User-level feature flag refinement (FORCE_ON / FORCE_OFF)
+-- Created: Migration 09 (09-feature-flags.sql)
+-- Altered: Migration 11 (added idx_user_feature_overrides_feature index)
 -- Business Rules:
---   - Hard delete (matches user_permission_overrides pattern)
---   - One override per user+feature (regular unique index, no zombie needed)
---   - override_state must be FORCE_ON or FORCE_OFF
---   - FORCE_ON cannot bypass CLIENT_OFF (enforced in FeatureGate, not DB)
---   - ON DELETE CASCADE for user_id (cleanup if user hard-deleted)
--- Migration: 09-feature-flags.sql
+--   - Hard delete (NO soft delete columns, NO is_deleted) -- matches user_permission_overrides pattern
+--   - One override per user+feature pair (regular unique index, no zombie needed)
+--   - override_state must be 'FORCE_ON' or 'FORCE_OFF'
+--   - FORCE_ON cannot bypass CLIENT_OFF (enforced in FeatureGate application layer, not DB)
+--   - ON DELETE CASCADE for user_id (cleanup if user is hard-deleted)
+--   - ON DELETE RESTRICT for feature_id (cannot delete feature with overrides)
+--   - Thin audit: only created_at and created_by (NO updated_at, NO updated_by)
+--   - No trigger (no updated_at column to auto-update)
 -- =====================================================
 CREATE TABLE user_feature_overrides (
     -- Identity
@@ -24,14 +27,20 @@ CREATE TABLE user_feature_overrides (
         CHECK (override_state IN ('FORCE_ON', 'FORCE_OFF')),
     reason TEXT NULL,
 
-    -- Audit (minimal — hard delete table)
+    -- Audit (minimal -- hard delete table, no updated_at/updated_by)
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
     created_by UUID NULL REFERENCES users(id)
 );
 
--- One override per user+feature (hard delete removes row, no zombie needed)
+-- Indexes
+-- Migration 09: One override per user+feature (hard delete removes row, no zombie needed)
 CREATE UNIQUE INDEX idx_user_feature_overrides_active
     ON user_feature_overrides(user_id, feature_id);
 
--- Performance: lookup overrides by user
+-- Migration 09: Lookup overrides by user
 CREATE INDEX idx_user_feature_overrides_user ON user_feature_overrides(user_id);
+
+-- Migration 11: FK index for feature_id (supports cascade delete in FeatureWriteDac)
+CREATE INDEX idx_user_feature_overrides_feature ON user_feature_overrides(feature_id);
+
+-- No trigger (no updated_at column)

@@ -215,7 +215,10 @@ private static readonly string[] RequiredFiles =
     "READMEs/SQL/PostgreSQL/Migrations/06-seed-permissions.sql",
     "READMEs/SQL/PostgreSQL/Migrations/08-fix-overrides-schema.sql",
     "READMEs/SQL/PostgreSQL/Migrations/09-feature-flags.sql",
-    "READMEs/SQL/PostgreSQL/Migrations/10-feature-flag-seed.sql"
+    "READMEs/SQL/PostgreSQL/Migrations/10-feature-flag-seed.sql",
+    "READMEs/SQL/PostgreSQL/Migrations/11-add-missing-fk-indexes.sql",
+    "READMEs/SQL/PostgreSQL/Migrations/12-era1-retrofit.sql",
+    "READMEs/SQL/PostgreSQL/Migrations/13-seed-admin-accounts.sql"
 };
 ```
 

@@ -39,14 +39,14 @@ New entities: always add `Create()` and `Rehydrate()` methods.
 |--------|---------------|------------|
 | `User` | Yes | DisplayName, Email, IsActive, LocalLogin*, Sso*, Password* |
 | `UserSession` | No (child of User) | RefreshToken, ExpiresAt, IsRevoked |
-| `Role` | Yes | Name, Code, IsSystem |
-| `Module` | Yes | Name, Code, SortOrder |
+| `Role` | Yes | Name, Code, IsSystem, IsActive |
+| `Module` | Yes | Name, Code, IsActive, SortOrder |
 | `Resource` | No (child of Module) | ModuleId, Name, Code |
 | `Action` | Yes | Name, Code |
 | `Permission` | Yes | ResourceId, ActionId, Code |
 | `UserRole` | No (junction) | UserId, RoleId |
 | `RolePermission` | No (junction) | RoleId, PermissionId |
-| `UserPermissionOverride` | No | UserId, PermissionId, IsAllowed |
+| `UserPermissionOverride` | No | UserId, PermissionId, IsAllowed, Reason |
 | `Client` | Yes | Name, Code, Status |
 | `Project` | Yes | ClientId, Name, Code, ExternalUrl, Status |
 | `ClientProjectMapping` | No (child of Project) | ProjectId, RoutingUrl, Environment |

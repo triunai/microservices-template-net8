@@ -1,4 +1,5 @@
 using Rgt.Space.Core.Domain.Primitives;
+using Rgt.Space.Core.Utilities;
 
 namespace Rgt.Space.Core.Domain.Entities.Identity;
 
@@ -22,7 +23,7 @@ public sealed class UserSession : AuditableEntity
         string? ipAddress,
         string? deviceInfo)
     {
-        return new UserSession(Guid.NewGuid())
+        return new UserSession(Uuid7.NewUuid7())
         {
             UserId = userId,
             RefreshToken = refreshToken,

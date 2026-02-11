@@ -1,4 +1,5 @@
 using Rgt.Space.Core.Domain.Primitives;
+using Rgt.Space.Core.Utilities;
 
 namespace Rgt.Space.Core.Domain.Entities.TaskAllocation;
 
@@ -12,7 +13,7 @@ public sealed class ProjectAssignment : AuditableEntity
 
     public static ProjectAssignment Create(Guid projectId, Guid userId, string positionCode)
     {
-        return new ProjectAssignment(Guid.NewGuid())
+        return new ProjectAssignment(Uuid7.NewUuid7())
         {
             ProjectId = projectId,
             UserId = userId,

@@ -1,7 +1,10 @@
 using Rgt.Space.Core.Domain.Primitives;
+using Rgt.Space.Core.Utilities;
 
 namespace Rgt.Space.Core.Domain.Entities.Permissions;
 
+// TODO: SQL table 'permissions' has no is_deleted/deleted_at/deleted_by columns but entity inherits AuditableEntity.
+//       Future: create TrackedEntity base (audit without soft-delete) or add soft-delete columns to SQL.
 public sealed class Permission : AuditableEntity
 {
     public Guid ResourceId { get; private set; }
@@ -13,7 +16,7 @@ public sealed class Permission : AuditableEntity
 
     public static Permission Create(Guid resourceId, Guid actionId, string code, string description)
     {
-        return new Permission(Guid.NewGuid())
+        return new Permission(Uuid7.NewUuid7())
         {
             ResourceId = resourceId,
             ActionId = actionId,

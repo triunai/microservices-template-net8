@@ -99,6 +99,22 @@ DELETE /api/v1/users/{userId:guid}                 Delete
 POST   /api/v1/users/{userId}/roles                Assign role (sub-resource)
 GET    /api/v1/dashboard/stats                     Aggregation
 POST   /api/v1/auth/login                          Special (AllowAnonymous)
+
+# Feature Flags (TASK-009/010/011)
+GET    /api/v1/features                             List all (FEATURES.LIST.VIEW)
+GET    /api/v1/features/{featureId:guid}            Get single (FEATURES.LIST.VIEW)
+POST   /api/v1/features                             Create (FEATURES.GLOBAL.EDIT)
+PUT    /api/v1/features/{featureId:guid}            Update (FEATURES.GLOBAL.EDIT)
+DELETE /api/v1/features/{featureId:guid}            Soft delete (FEATURES.GLOBAL.EDIT)
+PUT    /api/v1/features/{featureId}/clients/{clientId}  Upsert subscription (FEATURES.CLIENT.EDIT)
+POST   /api/v1/features/{featureId}/user-overrides  Set override (FEATURES.OVERRIDE.INSERT)
+DELETE /api/v1/features/{featureId}/user-overrides/{userId}  Clear (FEATURES.OVERRIDE.DELETE)
+GET    /api/v1/features/{featureId}/clients         Client subscriptions (FEATURES.LIST.VIEW)
+GET    /api/v1/clients/{clientId}/features          Features by client (FEATURES.LIST.VIEW)
+GET    /api/v1/features/{featureId}/user-overrides  User overrides by feature (FEATURES.LIST.VIEW)
+GET    /api/v1/users/{userId}/feature-overrides     Overrides by user (FEATURES.LIST.VIEW)
+GET    /api/v1/features/evaluate/{featureCode}      Single eval (AllowAnonymous)
+GET    /api/v1/features/evaluate                    Bulk eval (AllowAnonymous)
 ```
 
 All routes hardcoded as `/api/v1/...`. API versioning configured but only v1 exists.

@@ -152,15 +152,15 @@ WHO (TenantId, UserId, ClientId, IpAddress), WHAT (Action, EntityType, EntityId)
 
 ## Identity
 
-### CurrentUser (Production)
-**Currently COMMENTED OUT** in Extensions.cs. Reads from JWT claims via `IHttpContextAccessor`:
+### CurrentUser (Active)
+**ACTIVE** in Extensions.cs. Reads from JWT claims via `IHttpContextAccessor`:
 - `Id` → `x-local-user-id` claim (set by JIT sync or local token validation)
 - `ExternalId` → `sub` claim
 - `Email` → `email` claim
 
-### DevCurrentUser (Development)
-**Currently ACTIVE** in Extensions.cs (line 230). Hardcoded system admin: `Id = 019ac92a-de20-7793-b8df-b88a87ea4e34`, `Email = admin@rgtspace.com`
-Returns this ID for ALL requests regardless of JWT — test helpers and seed scripts depend on this ID existing in the DB.
+### DevCurrentUser (Test Only)
+**NOT ACTIVE** in production Extensions.cs. Hardcoded system admin: `Id = 019ac92a-de20-7793-b8df-b88a87ea4e34`, `Email = admin@rgtspace.com`
+Used only in test overrides (`CustomWebApplicationFactory`) — test helpers and seed scripts depend on this ID existing in the DB.
 
 ### IdentitySyncService (JIT Provisioning)
 SSO flow: Find by ExternalId → Find by Email (reactivate if deleted) → Create new user.

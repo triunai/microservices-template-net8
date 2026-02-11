@@ -171,7 +171,7 @@ For multi-file tasks, deploy parallel subagents with file-level boundaries. Prov
 ## Migration Load Order (TestDatabaseInitializer)
 
 ```
-00 → 01 → 03 → 01a → 02 → 06 → 08 → 09 → 10
+00 → 01 → 03 → 01a → 02 → 06 → 08 → 09 → 10 → 11 → 12 → 13
 ```
 
 - **03 before 02**: Migration 02 seeds `position_types`, created in 03
@@ -183,7 +183,7 @@ For multi-file tasks, deploy parallel subagents with file-level boundaries. Prov
 
 - Hardcoded ID: `019ac92a-de20-7793-b8df-b88a87ea4e34`
 - Email: `admin@rgtspace.com`
-- `DevCurrentUser` (active in Extensions.cs) returns this ID for all API requests
+- `CurrentUser` (JWT-based) is ACTIVE in Extensions.cs — `DevCurrentUser` only used in test overrides
 - Migration `01a-seed-devadmin.sql` ensures this ID exists in test DB
 - Migration 02 uses `uuid_generate_v7()` (random) — 01a must run first to "win" the email conflict
 

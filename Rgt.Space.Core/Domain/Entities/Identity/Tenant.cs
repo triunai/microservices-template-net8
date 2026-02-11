@@ -1,5 +1,6 @@
 using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Primitives;
+using Rgt.Space.Core.Utilities;
 
 namespace Rgt.Space.Core.Domain.Entities.Identity;
 
@@ -14,7 +15,7 @@ public sealed class Tenant : AuditableEntity
 
     public static Tenant Create(string name, string code, string connectionString)
     {
-        return new Tenant(Guid.NewGuid())
+        return new Tenant(Uuid7.NewUuid7())
         {
             Name = name,
             Code = code,
