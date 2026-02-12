@@ -137,22 +137,22 @@ Cache invalidation only clears the `IMemoryCache` on the node that handled the a
 
 ---
 
-## SSO Integration Findings (2026-02-12)
+## ~~SSO Integration Findings (2026-02-12)~~ — IMPLEMENTED (2026-02-12)
 
-**Status:** DOCUMENTED + ALIGNMENT EXHAUSTED (6 rounds, 2026-02-12) — spec at `READMEs/Tasks/TASK-015-SSO-Auth-Alignment.md`
+**Status:** ALL 9 FIXES IMPLEMENTED + 20 DEDICATED TESTS — 166/166 tests green
 
-### Fixes Required (Portal Side)
-| # | Fix | Severity | File |
-|---|-----|----------|------|
-| 1 | Case-insensitive tenant comparison (`.ToUpperInvariant()`) | CRITICAL | `TenantResolutionMiddleware.cs` |
-| 2 | Use `ext_provider` claim (not `issuer.Contains("localhost")`) | CRITICAL | `Program.cs` — classifies everyone as "azuread" in prod |
-| 3 | Remove hardcoded RSA key, use OIDC discovery | WARNING | `Program.cs` |
-| 4 | Remove broker DB connection strings (`RgtAuthPrototype`, `RgtAuthAudit`) | CLEANUP | `appsettings.json` |
-| 5 | Log `jti` claim for audit traceability | LOW | `Program.cs` |
-| 6 | Remove dead `"per-tenant"` rate limiter policy | CLEANUP | `Program.cs` |
-| 7 | Reject soft-deleted users in JIT sync (not reactivate) | CRITICAL | `IdentitySyncService.cs` — JIT sync currently reactivates deleted users |
-| 8 | Add `tid` to TestAuthHandler | LOW | `TestAuthHandler.cs` — tests don't exercise tenant resolution |
-| 9 | Remove provider from external ID lookup | MEDIUM | `UserReadDac.cs` + `IUserReadDac` + migration — prevents IdP flip-flop (B7) |
+### ~~Fixes Required (Portal Side)~~ — ALL DONE
+| # | Fix | Severity | Status |
+|---|-----|----------|--------|
+| 1 | Case-insensitive tenant comparison (`.ToUpperInvariant()`) | CRITICAL | DONE — `TenantResolutionMiddleware.cs` |
+| 2 | Use `ext_provider` claim (not `issuer.Contains("localhost")`) | CRITICAL | DONE — `Program.cs` |
+| 3 | Remove hardcoded RSA key, use OIDC discovery | WARNING | DONE — `Program.cs` (~28 lines removed) |
+| 4 | Remove broker DB connection strings | CLEANUP | DONE — `appsettings.json` + `appsettings.Development.json` |
+| 5 | Log `jti` claim for audit traceability | LOW | DONE — `Program.cs` |
+| 6 | Remove dead `"per-tenant"` rate limiter policy | CLEANUP | DONE — `Program.cs` |
+| 7 | Reject soft-deleted users in JIT sync | CRITICAL | DONE — `IdentitySyncService.cs` (both methods) |
+| 8 | Add `tid` to TestAuthHandler | LOW | DONE — `TestAuthHandler.cs` |
+| 9 | Remove provider from external ID lookup | MEDIUM | DONE — `IUserReadDac`, `UserReadDac`, `IdentitySyncService`, migration 14, `users.sql` golden schema |
 
 ### Decisions — ALL RESOLVED (2026-02-12)
 1. **Prod broker URL:** TBD — IP-based (no domain). Dev: `localhost:7012`
@@ -180,6 +180,18 @@ Cache invalidation only clears the `IMemoryCache` on the node that handled the a
 - Access token 15 min, refresh token 14 days, one-time rotation with family reuse detection
 - Logout revokes specific refresh token only — access token valid until `exp`
 - Concurrent multi-tenant sessions fully supported
+
+---
+
+## ~~SSO 401 Bug (2026-02-12)~~ — RESOLVED (2026-02-12)
+
+**Status:** RESOLVED — E2E SSO login working (Google + Microsoft)
+**Root Cause:** `Microsoft.IdentityModel.Protocols.OpenIdConnect 7.1.2` (transitive from `JwtBearer 8.0.11`) failed to parse `jwks_uri` from OIDC discovery JSON when other IdentityModel packages were at `8.8.0`. The parser extracted `issuer` but left `JwksUri: null` → `SigningKeys: 0` → `IDX10500`.
+**Fix:** Pinned `Microsoft.IdentityModel.Protocols.OpenIdConnect` and `Microsoft.IdentityModel.Protocols` to `8.8.0` in API csproj.
+**Secondary fixes (permanent):**
+- Auth event logging: `LogDebug` → `LogWarning` (failures) / `LogInformation` (success)
+- Serilog bootstrap: now loads `appsettings.{environment}.json` (was only loading base config)
+- `BackchannelHttpHandler` with dev SSL bypass (standard ASP.NET Core OIDC pattern)
 
 ---
 

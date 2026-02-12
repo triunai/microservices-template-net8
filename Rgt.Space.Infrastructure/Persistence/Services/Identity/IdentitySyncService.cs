@@ -34,7 +34,7 @@ public sealed class IdentitySyncService : IIdentitySyncService
             provider, externalId, email);
 
         // 1. Try to find by External ID (Already Linked)
-        var existingUserReadModel = await _userRead.GetByExternalIdAsync(provider, externalId, ct);
+        var existingUserReadModel = await _userRead.GetByExternalIdAsync(externalId, ct);
 
         if (existingUserReadModel is null)
         {
@@ -44,16 +44,18 @@ public sealed class IdentitySyncService : IIdentitySyncService
 
             if (existingUserReadModel is not null)
             {
-                _logger.LogInformation("User found by email (Active or Deleted). Linking/Reactivating now. UserId: {UserId}", existingUserReadModel.Id);
-                
+                _logger.LogInformation("User found by email (Active or Deleted). UserId: {UserId}", existingUserReadModel.Id);
+
                 var userEntity = await _userWrite.GetByIdAsync(existingUserReadModel.Id, ct);
                 if (userEntity != null)
                 {
-                    // If user was deleted, reactivate them
+                    // Reject soft-deleted users — do NOT reactivate (defense in depth)
                     if (userEntity.IsDeleted)
                     {
-                        _logger.LogInformation("Reactivating deleted user {UserId}", userEntity.Id);
-                        userEntity.Reactivate();
+                        _logger.LogWarning(
+                            "Soft-deleted portal user {UserId} attempted SSO sync. Rejecting. Provider: {Provider}, Email: {Email}",
+                            userEntity.Id, provider, email);
+                        return;
                     }
 
                     // Link the account
@@ -112,7 +114,7 @@ public sealed class IdentitySyncService : IIdentitySyncService
         CancellationToken ct = default)
     {
         // 1. Try to find by External ID
-        var existingUserReadModel = await _userRead.GetByExternalIdAsync(provider, externalId, ct);
+        var existingUserReadModel = await _userRead.GetByExternalIdAsync(externalId, ct);
 
         if (existingUserReadModel is null)
         {
@@ -125,9 +127,13 @@ public sealed class IdentitySyncService : IIdentitySyncService
                 var userEntity = await _userWrite.GetByIdAsync(existingUserReadModel.Id, ct);
                 if (userEntity != null)
                 {
+                    // Reject soft-deleted users — do NOT reactivate (defense in depth)
                     if (userEntity.IsDeleted)
                     {
-                        userEntity.Reactivate();
+                        _logger.LogWarning(
+                            "Soft-deleted portal user {UserId} attempted SSO login. Rejecting. Provider: {Provider}, Email: {Email}",
+                            userEntity.Id, provider, email);
+                        return Guid.Empty; // No x-local-user-id claim → no permissions → 403
                     }
 
                     userEntity.LinkSso(provider, externalId, email);

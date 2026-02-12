@@ -6,16 +6,40 @@
 `test/rbac-positiontype-verification-8034414594985432536`
 
 ## Project Health
-- **Build**: 0 errors, 0 warnings (verified 2026-02-12)
-- **Tests**: 97 unit + 49 integration = 146 total, 0 failures
-- **Last commit**: `1c76808` — feat: combo breaker
+- **Build**: 0 errors, 8 warnings (pre-existing, verified 2026-02-12)
+- **Tests**: 105 unit + 61 integration = 166 total, 0 failures
+- **Last commit**: `64899a9` — feat: production hardening (TASK-014) + SSO auth alignment spec (TASK-015)
 - **Docker**: Redis via docker-compose, PostgreSQL external (Testcontainers for tests)
 - **CI/CD**: GitHub Actions (dependabot configured)
 - **Auth**: `CurrentUser` (JWT-based) ACTIVE in production, `DevCurrentUser` only in tests
-- **TASK-014**: COMPLETE — verified via 8-point code review (all pass, 3 non-blocking warnings)
-- **TASK-015**: READY — SSO auth alignment EXHAUSTED (6 rounds), 9 fixes (~50 min), 3 CRITICALs
-- **Uncommitted**: 55 modified + 4 new files from TASK-014 + TASK-015 spec
-- **Migration load order**: 00 → 01 → 03 → 01a → 02 → 06 → 08 → 09 → 10 → 11 → 12 → 13
+- **TASK-014**: COMPLETE + COMMITTED
+- **TASK-015**: COMPLETE — 9 fixes + 20 dedicated tests, 166/166 green
+- **SSO E2E**: WORKING — SSO login via Google/Microsoft confirmed functional
+- **Uncommitted**: TASK-015 implementation (9 fixes + migration 14 + 20 tests) + SSO 401 fix (package pins + logging)
+- **Migration load order**: 00 → 01 → 03 → 01a → 02 → 06 → 08 → 09 → 10 → 11 → 12 → 13 → 14
+
+## ~~ACTIVE BUG: SSO Token → 401 Unauthorized~~ — RESOLVED (2026-02-12)
+
+**Root Cause:** `Microsoft.IdentityModel.Protocols.OpenIdConnect` package version **7.1.2** (transitive from `JwtBearer 8.0.11`) had an OIDC discovery parsing bug. The parser extracted `issuer` from the discovery JSON but failed to extract `jwks_uri`, leaving `SigningKeys: 0`. Token validation then failed with `IDX10500: No security keys were provided`.
+
+Meanwhile, `Microsoft.IdentityModel.Tokens` and `Microsoft.IdentityModel.JsonWebTokens` were at **8.8.0** (pulled by other transitives). The version split (7.1.2 vs 8.8.0) caused the parsing incompatibility.
+
+**Fix:** Pinned `Microsoft.IdentityModel.Protocols.OpenIdConnect` and `Microsoft.IdentityModel.Protocols` to **8.8.0** in `Rgt.Space.API.csproj`.
+
+**Debugging trail (4 fixes applied during investigation):**
+1. Auth event logging: `LogDebug` → `LogWarning` (failures) / `LogInformation` (success) — permanent fix
+2. Serilog bootstrap: now loads `appsettings.{environment}.json` — permanent fix
+3. `BackchannelHttpHandler` with dev SSL bypass — standard ASP.NET pattern, kept
+4. Diagnostic code in `OnAuthenticationFailed` — removed after root cause found
+
+**Key diagnostic that cracked it:**
+```
+OIDC Config — Issuer: https://localhost:7012, SigningKeys: 0, JwksUri: null
+Manual discovery fetch OK: {"issuer":"https://localhost:7012","jwks_uri":"https://localhost:7012/.well-known/jwks.json",...}
+```
+ConfigurationManager fetched the doc and parsed issuer, but `JwksUri` was null — parser bug in 7.1.2.
+
+**E2E SSO login: WORKING** after package version alignment.
 
 ## What's Set Up
 - [x] 5x CLAUDE.md files (root, Core, Infrastructure, API, Tests)
@@ -297,12 +321,19 @@ Restored real JWT auth on all feature flag endpoints:
 
 ### Backlog
 
+#### ~~TASK-015 Test Coverage~~ — COMPLETE (2026-02-12)
+All 20 tests implemented:
+- 8 unit tests: soft-delete rejection (Fix 7) + provider-agnostic lookup (Fix 9)
+- 4 DAC integration tests: external_id index, soft-delete filtering, uniqueness, zombie-safe partial index
+- 8 endpoint integration tests: tenant case-insensitivity (Fix 1), normalization, tid claim resolution (Fix 8)
+- New files: `TenantResolutionTests.cs`, `ConfigurableTestAuthHandler.cs`
+
 #### Code Quality (no runtime impact)
 1. **TrackedEntity base class** (~20 min) — new base for tables without soft-delete (Action, Permission, Role)
 2. **RBAC integration test** (~15 min) — real middleware + DB test (safety net only)
 3. **Health check lockdown** — auth for `/health` detailed endpoint, remove `/health/tenant/{tenantName}`
 4. **AppException message review** — ensure no table names/SQL fragments in client-facing errors
-5. **Dead `"per-tenant"` rate limiter policy** — Program.cs registers named policy never used by any endpoint
+5. ~~**Dead `"per-tenant"` rate limiter policy**~~ — DONE (TASK-015 Fix 6)
 6. **UpdateUser audit trail** — `updatedBy` uses `req.UserId` instead of `ICurrentUser.Id` (now that auth is enforced)
 7. **Debug endpoints AllowAnonymous()** — runtime guard is correct but they appear in Swagger across all environments
 
@@ -311,17 +342,8 @@ Restored real JWT auth on all feature flag endpoints:
 2. **MCP servers** — context7 for live docs, GitHub MCP for PR/issue integration
 3. **Custom skills** — `/gen-test`, `/create-migration`
 
-#### SSO Integration (Pre-Production)
-1. **TASK-015: SSO Auth Alignment** (~50 min) — 9 fixes, all decisions resolved, alignment EXHAUSTED (6 rounds with broker team)
-   - Fix 1: Case-insensitive tenant (CRITICAL)
-   - Fix 2: Use `ext_provider` claim (CRITICAL for prod — current hack classifies everyone as "azuread")
-   - Fix 3: Remove hardcoded RSA key
-   - Fix 4: Remove broker DB conn strings
-   - Fix 5: Log `jti` for audit
-   - Fix 6: Remove dead rate limiter policy
-   - Fix 7: Reject soft-deleted users in JIT sync (CRITICAL — currently reactivates deleted users)
-   - Fix 8: Add `tid` to TestAuthHandler
-   - Fix 9: Remove provider from external ID lookup (MEDIUM — prevents IdP flip-flop, needs migration)
+#### ~~SSO Integration (Pre-Production)~~ — DONE
+~~TASK-015: SSO Auth Alignment~~ — ALL 9 FIXES IMPLEMENTED (2026-02-12)
 
 #### Feature Work
 1. **GET /api/v1/users/{userId}/clients** endpoint (if frontend needs scoped client list)
@@ -357,12 +379,12 @@ Restored real JWT auth on all feature flag endpoints:
 |----------|-------|-------|--------|
 | Unit/Entities | 2 | 8 | PositionType, User |
 | Unit/Validators | 1 | 3 | ClientValidator |
-| Unit/Services | 3 | 34 | IdentitySyncService (3), FeatureGate (21), **FeatureEvaluator (10)** |
+| Unit/Services | 3 | 42 | IdentitySyncService (12), FeatureGate (21), **FeatureEvaluator (10)** |
 | Unit/Handlers/Features | 9 | 25 | All 8 CRUD handlers + TOCTOU + cache + user check |
 | Unit/Handlers/Features (reads) | 1 | 8 | 4 read endpoint handlers (2 tests each) |
 | Unit/Handlers/Features (eval) | 2 | 7 | **EvaluateFeature (3), BulkEvaluateFeatures (4)** |
-| Unit subtotal | 18 | 97 | |
-| Integration/API | 2 | 23 | ClientEndpoints (1), **FeatureEndpoints (22)** |
-| Integration/Persistence | 3 | 26 | PositionType (1), UserDac (3), **FeatureDac (22)** |
-| Integration subtotal | 5 | 49 | **Docker required** |
-| **TOTAL** | **23** | **146** | **All green** |
+| Unit subtotal | 18 | 105 | |
+| Integration/API | 3 | 31 | ClientEndpoints (1), FeatureEndpoints (22), **TenantResolution (8)** |
+| Integration/Persistence | 3 | 30 | PositionType (1), UserDac (7), **FeatureDac (22)** |
+| Integration subtotal | 6 | 61 | **Docker required** |
+| **TOTAL** | **24** | **166** | **All green** |

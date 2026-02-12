@@ -216,12 +216,10 @@ public sealed class UserReadDac : IUserReadDac
         }, ct);
     }
 
-    public async Task<UserReadModel?> GetByExternalIdAsync(string provider, string externalId, CancellationToken ct)
+    public async Task<UserReadModel?> GetByExternalIdAsync(string externalId, CancellationToken ct)
     {
-        // var pipeline = GetPipeline(); 
-
         var connectionString = await _connFactory.GetConnectionStringAsync(ct);
-        
+
         return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connectionString);
@@ -245,13 +243,12 @@ public sealed class UserReadDac : IUserReadDac
                     updated_at,
                     updated_by
                 FROM users
-                WHERE sso_provider = @Provider
-                  AND external_id = @ExternalId
+                WHERE external_id = @ExternalId
                   AND is_deleted = FALSE";
 
             var cmd = new CommandDefinition(
                 sql,
-                new { Provider = provider, ExternalId = externalId },
+                new { ExternalId = externalId },
                 commandTimeout: SqlConstants.CommandTimeouts.TenantDb,
                 cancellationToken: token);
             var result = await conn.QuerySingleOrDefaultAsync<_UserRow>(cmd);

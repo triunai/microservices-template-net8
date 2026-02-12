@@ -130,7 +130,7 @@ All routes hardcoded as `/api/v1/...`. API versioning configured but only v1 exi
  6. UseCors("Default")                 → Env-conditional (AllowAny dev, whitelist prod)
  7. UseSerilogRequestLogging()         → Enriches with CorrelationId, TenantId, ClientIP
  8. UseAuthentication()                → Dual JWT validation (SSO + Local via MultiScheme)
- 9. TenantResolutionMiddleware         → JWT tid (authoritative) → X-Tenant header (fallback). Mismatch → 403
+ 9. TenantResolutionMiddleware         → JWT tid (authoritative, ToUpperInvariant) → X-Tenant header (fallback). Case-insensitive comparison, mismatch → 403
 10. PermissionLoadingMiddleware        → Loads DB permissions → adds as "permissions" claims (1-min cache)
 11. UseAuthorization()                 → Standard ASP.NET authz
 12. UseFastEndpoints()                 → Endpoint routing + built-in exception handling
@@ -144,12 +144,12 @@ All routes hardcoded as `/api/v1/...`. API versioning configured but only v1 exi
 ### Dual JWT Schemes
 | Scheme | Algorithm | Source | Issuer |
 |--------|-----------|--------|--------|
-| `SsoBearer` | RSA-SHA256 | External SSO/Azure AD | OIDC Authority |
+| `SsoBearer` | RSA-SHA256 | External SSO broker (OIDC discovery) | OIDC Authority |
 | `LocalBearer` | HMAC-SHA256 | `/api/v1/auth/login` | `rgt-space-portal` |
 
 **MultiScheme selection**: Reads token, checks issuer — `"rgt-space-portal"` → LocalBearer, else → SsoBearer.
 
-**SSO OnTokenValidated**: Extracts `sub`, `email`, `name` → calls `SyncOrGetUserAsync` → adds `x-local-user-id` claim.
+**SSO OnTokenValidated**: Extracts `sub`, `email`, `name`, `ext_provider` → calls `SyncOrGetUserAsync` → adds `x-local-user-id` claim. Uses `ext_provider` claim (not issuer-based detection) to determine SSO provider.
 
 **Local OnTokenValidated**: `sub` claim IS the local user ID → adds `x-local-user-id` claim.
 
@@ -176,7 +176,7 @@ Extension method: `result.ToProblemDetails(HttpContext)` converts FluentResults 
 
 ## Rate Limiting
 
-Per-tenant sliding window: 1000 requests / 10 seconds, 2 segments (5s each), queue 10 overflow.
+IP-based sliding window: 1000 requests / 10 seconds, 2 segments (5s each), queue 10 overflow.
 429 response includes `Retry-After: 10` header and ProblemDetails body.
 
 ## Dev Startup

@@ -163,7 +163,9 @@ WHO (TenantId, UserId, ClientId, IpAddress), WHAT (Action, EntityType, EntityId)
 Used only in test overrides (`CustomWebApplicationFactory`) — test helpers and seed scripts depend on this ID existing in the DB.
 
 ### IdentitySyncService (JIT Provisioning)
-SSO flow: Find by ExternalId → Find by Email (reactivate if deleted) → Create new user.
+SSO flow: Find by ExternalId → Find by Email (reject if deleted, link if active) → Create new user.
+**TASK-015:** Soft-deleted users are now REJECTED (return `Guid.Empty` → 403), never reactivated.
+**TASK-015:** `GetByExternalIdAsync` matches on `external_id` alone (not `sso_provider + external_id`).
 
 ### TokenService
 Local JWT generation: HMAC-SHA256, configurable expiry (default 60min access, 7d refresh). Refresh tokens are 64-byte random base64.

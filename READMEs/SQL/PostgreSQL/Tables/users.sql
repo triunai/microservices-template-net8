@@ -6,7 +6,7 @@
 --          updated_at trigger, timestamp defaults → UTC)
 -- Business Rules:
 --   - Email must be unique among non-deleted users (partial index)
---   - SSO provider + external_id must be unique among non-deleted users (partial index)
+--   - external_id must be unique among non-deleted users (partial index, provider-agnostic)
 --   - Soft-deletable: is_deleted, deleted_at, deleted_by
 --   - Cannot delete user if they have active project_assignments (FK RESTRICT)
 --   - JIT provisioning: SSO tokens create/link local user on first login
@@ -56,10 +56,11 @@ CREATE UNIQUE INDEX idx_users_email_active
     ON users(email)
     WHERE is_deleted = FALSE;
 
--- Migration 12: Zombie-safe partial index (replaces Migration 01 CONSTRAINT users_sso_uk + idx_users_external_id)
+-- Migration 14: External ID index (replaces Migration 12 compound index on sso_provider + external_id)
+-- Broker's `sub` is IdP-agnostic — lookup by external_id alone prevents IdP flip-flop
 CREATE UNIQUE INDEX idx_users_sso_active
-    ON users(sso_provider, external_id)
-    WHERE is_deleted = FALSE AND sso_provider IS NOT NULL;
+    ON users(external_id)
+    WHERE is_deleted = FALSE AND external_id IS NOT NULL;
 
 -- Triggers (reference only -- definition in Functions/)
 -- TRIGGER: trg_users_updated_at -> update_updated_at_column() (Migration 12)

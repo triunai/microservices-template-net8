@@ -133,6 +133,138 @@ public class UserDacIntegrationTests
         retrieved.Should().BeNull("Should not retrieve soft-deleted user by default");
     }
 
+    // ────────────────────────────────────────────
+    // SSO External ID Tests (TASK-015)
+    // ────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetByExternalIdAsync_ShouldFindUser_ByExternalIdAlone()
+    {
+        // Arrange
+        var connFactory = new TestSystemConnectionFactory(ConnectionString);
+        var pipelineProvider = Substitute.For<ResiliencePipelineProvider<string>>();
+        pipelineProvider.GetPipeline("PortalDb").Returns(ResiliencePipeline.Empty);
+        var logger = Substitute.For<ILogger<UserReadDac>>();
+        var dac = new UserReadDac(connFactory, pipelineProvider, logger);
+
+        var externalId = $"ext_find_{Guid.NewGuid():N}"[..20];
+        var email = $"test_{Guid.NewGuid():N}@example.com";
+        await SeedUserWithExternalIdAsync(externalId, "google", email);
+
+        // Act
+        var result = await dac.GetByExternalIdAsync(externalId, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull("user with this external_id should be found");
+        result!.ExternalId.Should().Be(externalId);
+    }
+
+    [Fact]
+    public async Task GetByExternalIdAsync_ShouldNotFindSoftDeletedUser()
+    {
+        // Arrange
+        var connFactory = new TestSystemConnectionFactory(ConnectionString);
+        var pipelineProvider = Substitute.For<ResiliencePipelineProvider<string>>();
+        pipelineProvider.GetPipeline("PortalDb").Returns(ResiliencePipeline.Empty);
+        var logger = Substitute.For<ILogger<UserReadDac>>();
+        var dac = new UserReadDac(connFactory, pipelineProvider, logger);
+
+        var externalId = $"ext_del_{Guid.NewGuid():N}"[..20];
+        var email = $"test_{Guid.NewGuid():N}@example.com";
+        var userId = await SeedUserWithExternalIdAsync(externalId, "google", email);
+
+        // Soft-delete the user
+        await SoftDeleteUserAsync(userId);
+
+        // Act
+        var result = await dac.GetByExternalIdAsync(externalId, CancellationToken.None);
+
+        // Assert
+        result.Should().BeNull("soft-deleted user should not be returned by GetByExternalIdAsync");
+    }
+
+    [Fact]
+    public async Task GetByExternalIdAsync_ShouldEnforceUniqueness_OnExternalId()
+    {
+        // Arrange
+        var externalId = $"ext_uniq_{Guid.NewGuid():N}"[..20];
+        var email1 = $"test_{Guid.NewGuid():N}@example.com";
+        var email2 = $"test_{Guid.NewGuid():N}@example.com";
+        await SeedUserWithExternalIdAsync(externalId, "google", email1);
+
+        // Act — attempt to insert a second active user with the same external_id
+        var userId2 = Rgt.Space.Core.Utilities.Uuid7.NewUuid7();
+        using var conn = new Npgsql.NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+
+        var act = async () => await conn.ExecuteAsync(@"
+            INSERT INTO users (id, display_name, email, is_active, sso_login_enabled, sso_provider, external_id)
+            VALUES (@Id, @Name, @Email, TRUE, TRUE, @Provider, @ExternalId)",
+            new { Id = userId2, Name = $"Test-{externalId}-dup", Email = email2, Provider = "google", ExternalId = externalId });
+
+        // Assert — unique index idx_users_sso_active should prevent this
+        await act.Should().ThrowAsync<Npgsql.PostgresException>()
+            .Where(e => e.SqlState == "23505");
+    }
+
+    [Fact]
+    public async Task Migration14_ShouldAllowSameExternalIdForDeletedAndActiveUser()
+    {
+        // Arrange — seed user1 with external_id, then soft-delete it
+        var externalId = $"ext_zombie_{Guid.NewGuid():N}"[..20];
+        var email1 = $"test_{Guid.NewGuid():N}@example.com";
+        var email2 = $"test_{Guid.NewGuid():N}@example.com";
+        var userId1 = await SeedUserWithExternalIdAsync(externalId, "google", email1);
+        await SoftDeleteUserAsync(userId1);
+
+        // Act — seed user2 with the SAME external_id (should succeed due to partial index)
+        var userId2 = await SeedUserWithExternalIdAsync(externalId, "google", email2);
+
+        // Assert — DAC finds the active user (user2), not the zombie (user1)
+        var connFactory = new TestSystemConnectionFactory(ConnectionString);
+        var pipelineProvider = Substitute.For<ResiliencePipelineProvider<string>>();
+        pipelineProvider.GetPipeline("PortalDb").Returns(ResiliencePipeline.Empty);
+        var logger = Substitute.For<ILogger<UserReadDac>>();
+        var dac = new UserReadDac(connFactory, pipelineProvider, logger);
+
+        var result = await dac.GetByExternalIdAsync(externalId, CancellationToken.None);
+        result.Should().NotBeNull("active user with same external_id should be found");
+        result!.Id.Should().Be(userId2, "should return the active user, not the soft-deleted one");
+        result.ExternalId.Should().Be(externalId);
+    }
+
+    // ────────────────────────────────────────────
+    // SSO seed helpers
+    // ────────────────────────────────────────────
+
+    private async Task<Guid> SeedUserWithExternalIdAsync(string externalId, string provider, string email)
+    {
+        var userId = Rgt.Space.Core.Utilities.Uuid7.NewUuid7();
+        using var conn = new Npgsql.NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await conn.ExecuteAsync(@"
+            INSERT INTO users (id, display_name, email, is_active, sso_login_enabled, sso_provider, external_id)
+            VALUES (@Id, @Name, @Email, TRUE, TRUE, @Provider, @ExternalId)
+            ON CONFLICT (id) DO NOTHING",
+            new { Id = userId, Name = $"Test-{externalId}", Email = email, Provider = provider, ExternalId = externalId });
+        return userId;
+    }
+
+    private async Task SoftDeleteUserAsync(Guid userId)
+    {
+        using var conn = new Npgsql.NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await conn.ExecuteAsync(@"
+            UPDATE users SET is_deleted = TRUE, is_active = FALSE,
+                deleted_at = (NOW() AT TIME ZONE 'utc'), deleted_by = @UserId
+            WHERE id = @UserId",
+            new { UserId = userId });
+    }
+
+    // ────────────────────────────────────────────
+    // RBAC helpers
+    // ────────────────────────────────────────────
+
     private async Task SetupRbacTestDataAsync(string connectionString)
     {
         using var conn = new Npgsql.NpgsqlConnection(connectionString);

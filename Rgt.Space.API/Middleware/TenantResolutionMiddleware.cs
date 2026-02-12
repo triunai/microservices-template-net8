@@ -41,8 +41,9 @@ namespace Rgt.Space.API.Middleware
 
                 if (!string.IsNullOrWhiteSpace(jwtTid))
                 {
-                    // JWT tid is authoritative — validate header doesn't conflict
-                    if (!string.IsNullOrWhiteSpace(headerTenant) && headerTenant != jwtTid)
+                    // JWT tid is authoritative — validate header doesn't conflict (case-insensitive)
+                    if (!string.IsNullOrWhiteSpace(headerTenant) &&
+                        !string.Equals(headerTenant, jwtTid, StringComparison.OrdinalIgnoreCase))
                     {
                         _logger.LogWarning(
                             "Tenant mismatch: JWT tid={JwtTid}, X-Tenant={HeaderTenant}. Rejecting request.",
@@ -51,7 +52,7 @@ namespace Rgt.Space.API.Middleware
                         return;
                     }
 
-                    tenantCode = jwtTid;
+                    tenantCode = jwtTid.ToUpperInvariant();
                     source = "JWT-tid-claim";
                     _logger.LogDebug("Tenant resolved from JWT tid claim: {TenantCode}", tenantCode);
                 }
@@ -60,7 +61,7 @@ namespace Rgt.Space.API.Middleware
             // Priority 2: X-Tenant header (fallback for unauthenticated requests)
             if (string.IsNullOrWhiteSpace(tenantCode))
             {
-                tenantCode = context.Request.Headers[HttpConstants.Headers.Tenant].FirstOrDefault();
+                tenantCode = context.Request.Headers[HttpConstants.Headers.Tenant].FirstOrDefault()?.ToUpperInvariant();
                 if (!string.IsNullOrWhiteSpace(tenantCode))
                 {
                     source = "X-Tenant-header";

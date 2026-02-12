@@ -10,10 +10,12 @@ using Rgt.Space.Infrastructure.Tenancy;
 using Microsoft.AspNetCore.RateLimiting;
 
 // Configure Serilog early (before building the app)
+var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(new ConfigurationBuilder()
         .SetBasePath(Directory.GetCurrentDirectory())
         .AddJsonFile("appsettings.json")
+        .AddJsonFile($"appsettings.{environment}.json", optional: true)
         .Build())
     .Enrich.FromLogContext()
     .CreateLogger();
@@ -117,6 +119,16 @@ try
             // Enable HTTPS metadata discovery (set to false ONLY for localhost dev)
             options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
 
+            // Dev: Accept self-signed certs on OIDC backchannel (companion to RequireHttpsMetadata)
+            if (builder.Environment.IsDevelopment())
+            {
+                options.BackchannelHttpHandler = new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback =
+                        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                };
+            }
+
             // Token validation parameters
             options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
             {
@@ -127,35 +139,6 @@ try
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.FromMinutes(5),
             };
-
-            // DEV ONLY: Hardcode RSA key to bypass Discovery issues
-            if (builder.Environment.IsDevelopment())
-            {
-                try 
-                {
-                    var rsa = System.Security.Cryptography.RSA.Create();
-                    rsa.ImportParameters(new System.Security.Cryptography.RSAParameters
-                    {
-                        Modulus = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes("rNH-ckvzkKRcqAKmb8CDdABZ-4_fUgI-vjSRoDfz-kCDtFdxTD69XvqUGP4NRyPXiSwI3ODh1_iBv-eg1RCBB8iA8eNLHuD5VbeMq4J5_ktCUjAUBQ783cs9R_7RKyLRrlW-Cq0EiZ-Z0I5vyWE9yzCN7Mf1MU2cn4GnAxMsJFlMwNEstbupqZWIgZXqLxrHcXcUpS-zpPkJULI4tDsUTjXMih8hU2ikrb_EltNYi0tcIBV6TfoBEc3OGiz8ao4mZ8UiKLBMwUi00qvQRtGl3xm0idh3sF2sGunIkTlRFtsBzjNpTqcAotyRXTNuQOTExX_dRL8C74eHUwd2J9quQQ"),
-                        Exponent = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes("AQAB")
-                    });
-
-                    var key = new Microsoft.IdentityModel.Tokens.RsaSecurityKey(rsa) { KeyId = "rsa-2025-11-27" };
-
-                    options.TokenValidationParameters.IssuerSigningKey = key;
-                    options.Configuration = new Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration
-                    {
-                        Issuer = authConfig["Authority"],
-                    };
-                    options.Configuration.SigningKeys.Add(key);
-                    
-                    Log.Warning("DEV MODE: SsoBearer using Hardcoded RSA Key.");
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "Failed to configure SSO hardcoded key.");
-                }
-            }
 
             // JIT User Provisioning for SSO tokens
             options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
@@ -172,7 +155,8 @@ try
                                ?? context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? email;
                     var issuer = context.Principal?.FindFirst("iss")?.Value;
 
-                    logger.LogDebug("SSO Token Validated. Subject: {Subject}", subject);
+                    var jti = context.Principal?.FindFirst("jti")?.Value;
+                    logger.LogInformation("SSO Token Validated. Subject: {Subject}, JTI: {Jti}", subject, jti);
 
                     if (string.IsNullOrEmpty(subject) || string.IsNullOrEmpty(email))
                     {
@@ -181,7 +165,7 @@ try
                         return;
                     }
 
-                    var provider = issuer?.Contains("localhost") == true ? "sso_broker" : "azuread";
+                    var provider = context.Principal?.FindFirst("ext_provider")?.Value ?? "unknown";
 
                     try
                     {
@@ -200,7 +184,7 @@ try
                 OnAuthenticationFailed = context =>
                 {
                     var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-                    logger.LogDebug("SSO Authentication failed: {Exception}", context.Exception.Message);
+                    logger.LogWarning("SSO Authentication failed: {Exception}", context.Exception.Message);
                     return Task.CompletedTask;
                 }
             };
@@ -239,7 +223,7 @@ try
 
                     // For local tokens, the "sub" claim IS the local user ID
                     var userId = context.Principal?.FindFirst("sub")?.Value;
-                    logger.LogDebug("Local Token Validated. Subject: {Subject}", userId);
+                    logger.LogInformation("Local Token Validated. Subject: {Subject}", userId);
                     if (!string.IsNullOrEmpty(userId))
                     {
                         var claimsIdentity = context.Principal?.Identity as System.Security.Claims.ClaimsIdentity;
@@ -251,7 +235,7 @@ try
                 OnAuthenticationFailed = context =>
                 {
                     var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-                    logger.LogDebug("Local Authentication failed: {Exception}", context.Exception.Message);
+                    logger.LogWarning("Local Authentication failed: {Exception}", context.Exception.Message);
                     return Task.CompletedTask;
                 }
             };
@@ -319,16 +303,6 @@ try
     // Add rate limiting
     builder.Services.AddRateLimiter(options =>
     {
-        // Per-tenant rate limiting using sliding window
-        options.AddSlidingWindowLimiter("per-tenant", config =>
-        {
-            config.PermitLimit = 1000; // 1000 requests (increased for load testing)
-            config.Window = TimeSpan.FromSeconds(10); // per 10 seconds
-            config.SegmentsPerWindow = 2; // Sliding window with 2 segments (5s each)
-            config.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
-            config.QueueLimit = 10; // Queue up to 10 requests when limit exceeded
-        });
-
         // Global rate limiter (IP-based partitioning — runs before auth/tenant resolution)
         options.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<Microsoft.AspNetCore.Http.HttpContext, string>(httpContext =>
         {

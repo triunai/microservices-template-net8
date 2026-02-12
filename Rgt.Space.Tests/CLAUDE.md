@@ -200,7 +200,7 @@ pipelineProvider.GetPipeline("PortalDb").Returns(ResiliencePipeline.Empty);
 var logger = Substitute.For<ILogger<FeatureReadDac>>();
 var dac = new FeatureReadDac(connFactory, pipelineProvider, logger);
 ```
-NOTE: Pipeline key must match DAC constructor (`"PortalDb"` for feature DACs, `"System"` for identity DACs).
+NOTE: Pipeline key is `"PortalDb"` for ALL DACs (normalized in TASK-014).
 
 ### TestDatabaseInitializer
 Loads SQL migration files in dependency order (NOT numeric). New features MUST add their migration here:
@@ -218,13 +218,15 @@ private static readonly string[] RequiredFiles =
     "READMEs/SQL/PostgreSQL/Migrations/10-feature-flag-seed.sql",
     "READMEs/SQL/PostgreSQL/Migrations/11-add-missing-fk-indexes.sql",
     "READMEs/SQL/PostgreSQL/Migrations/12-era1-retrofit.sql",
-    "READMEs/SQL/PostgreSQL/Migrations/13-seed-admin-accounts.sql"
+    "READMEs/SQL/PostgreSQL/Migrations/13-seed-admin-accounts.sql",
+    "READMEs/SQL/PostgreSQL/Migrations/14-external-id-index.sql"
 };
 ```
 
 **Critical ordering rules:**
 - 03 before 02 (02 seeds `position_types` created in 03)
 - 01a before 02 (locks DevAdmin hardcoded ID before 02 generates random one)
+- 14 after 12 (replaces compound index created in 12)
 - Never load 05 (obsolete) or 07 (ordering bug)
 
 ## File Structure
@@ -253,7 +255,10 @@ Rgt.Space.Tests/
 ├── Integration/
 │   ├── Api/
 │   │   ├── ClientEndpointTests.cs
-│   │   └── FeatureEndpointTests.cs
+│   │   ├── FeatureEndpointTests.cs
+│   │   ├── TenantResolutionTests.cs
+│   │   ├── ConfigurableTestAuthHandler.cs
+│   │   └── TestAuthHandler.cs
 │   ├── Persistence/
 │   │   ├── PositionTypeIntegrationTests.cs
 │   │   ├── UserDacIntegrationTests.cs

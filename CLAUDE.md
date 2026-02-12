@@ -171,7 +171,7 @@ For multi-file tasks, deploy parallel subagents with file-level boundaries. Prov
 ## Migration Load Order (TestDatabaseInitializer)
 
 ```
-00 → 01 → 03 → 01a → 02 → 06 → 08 → 09 → 10 → 11 → 12 → 13
+00 → 01 → 03 → 01a → 02 → 06 → 08 → 09 → 10 → 11 → 12 → 13 → 14
 ```
 
 - **03 before 02**: Migration 02 seeds `position_types`, created in 03

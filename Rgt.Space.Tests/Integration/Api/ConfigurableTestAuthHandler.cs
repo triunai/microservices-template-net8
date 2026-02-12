@@ -8,31 +8,38 @@ using Rgt.Space.Core.Constants;
 namespace Rgt.Space.Tests.Integration.Api;
 
 /// <summary>
-/// Test authentication handler that auto-authenticates as the DevAdmin user
-/// with all permissions. Used by integration tests to bypass JWT auth.
+/// Configurable test auth handler that allows per-test control of the tid claim.
+/// Used by TenantResolutionTests to test tenant header/JWT mismatch scenarios.
 /// </summary>
-public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
+public sealed class ConfigurableTestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
-    public const string SchemeName = "TestScheme";
+    public const string SchemeName = "ConfigurableTestScheme";
+
+    /// <summary>Set before each test to control the JWT tid claim value. Null = no tid claim.</summary>
+    public static string? TenantId { get; set; } = "TEST_TENANT";
+
+    /// <summary>Set to false to simulate unauthenticated requests.</summary>
+    public static bool IsAuthenticated { get; set; } = true;
+
     private static readonly Guid DevAdminId = Guid.Parse("019ac92a-de20-7793-b8df-b88a87ea4e34");
 
-    public TestAuthHandler(
+    public ConfigurableTestAuthHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
         UrlEncoder encoder)
-        : base(options, logger, encoder)
-    {
-    }
+        : base(options, logger, encoder) { }
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        if (!IsAuthenticated)
+            return Task.FromResult(AuthenticateResult.NoResult());
+
         var claims = new List<Claim>
         {
             new("x-local-user-id", DevAdminId.ToString()),
             new("sub", DevAdminId.ToString()),
             new("email", "admin@rgtspace.com"),
             new(ClaimTypes.Name, "System Admin"),
-            new("tid", "TEST_TENANT"),
             // Feature flag permissions
             new("permissions", FeatureFlagConstants.Permissions.ListView),
             new("permissions", FeatureFlagConstants.Permissions.GlobalEdit),
@@ -64,6 +71,9 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
             new("permissions", PermissionConstants.UserManagement.AccessEdit),
             new("permissions", PermissionConstants.UserManagement.AccessDelete),
         };
+
+        if (TenantId != null)
+            claims.Add(new Claim("tid", TenantId));
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);
