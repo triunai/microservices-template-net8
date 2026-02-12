@@ -1,5 +1,6 @@
 using FastEndpoints;
 using Rgt.Space.Core.Abstractions.PortalRouting;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.PortalRouting;
 using Rgt.Space.Infrastructure.Mapping;
 
@@ -12,6 +13,7 @@ public sealed class Endpoint(
     public override void Configure()
     {
         Get("/api/v1/portal-routing/projects/{id}");
+        Permissions(PermissionConstants.PortalRouting.RoutingView);
         Summary(s =>
         {
             s.Summary = "Get project by ID";

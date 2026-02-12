@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.ReadModels;
 using GetUserRolesQuery = Rgt.Space.Infrastructure.Queries.Identity.GetUserRoles;
 
@@ -11,6 +12,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
     public override void Configure()
     {
         Get("/api/v1/users/{userId}/roles");
+        Permissions(PermissionConstants.UserManagement.AccessView);
         Summary(s =>
         {
             s.Summary = "Get user's assigned roles";

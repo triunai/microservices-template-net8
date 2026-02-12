@@ -31,12 +31,23 @@ public sealed class User : AuditableEntity
     /// <summary>
     /// Creates a new user from SSO provisioning.
     /// </summary>
+    /// <param name="externalId">The unique identifier from the SSO provider.</param>
+    /// <param name="email">The user's email address.</param>
+    /// <param name="displayName">The user's display name.</param>
+    /// <param name="provider">The SSO provider name (e.g., "google", "azuread").</param>
+    /// <returns>A new <see cref="User"/> instance.</returns>
+    /// <exception cref="ArgumentException">Thrown when any required argument is null or empty.</exception>
     public static User CreateFromSso(
         string externalId, 
         string email, 
         string displayName, 
         string provider)
     {
+        if (string.IsNullOrWhiteSpace(externalId)) throw new ArgumentException("ExternalId cannot be empty", nameof(externalId));
+        if (string.IsNullOrWhiteSpace(email)) throw new ArgumentException("Email cannot be empty", nameof(email));
+        if (string.IsNullOrWhiteSpace(displayName)) throw new ArgumentException("DisplayName cannot be empty", nameof(displayName));
+        if (string.IsNullOrWhiteSpace(provider)) throw new ArgumentException("Provider cannot be empty", nameof(provider));
+
         // Use UUIDv7 for time-ordered IDs
         return new User(Uuid7.NewUuid7())
         {

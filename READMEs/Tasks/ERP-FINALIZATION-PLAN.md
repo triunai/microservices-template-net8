@@ -52,4 +52,4 @@
 ## ✅ Checklist
 - [x] **Phase 1:** Implement `Get/Grant/Revoke` Permission endpoints. (Completed 2025-12-02)
 - [x] **Phase 2:** Enable JWT Auth & Refactor `CurrentUserId`. (Completed 2025-12-02)
-- [ ] **Phase 3:** Implement `GetDashboardStats` endpoint.
+- [x] **Phase 3:** Implement `GetDashboardStats` endpoint. (Completed 2025-12-17)

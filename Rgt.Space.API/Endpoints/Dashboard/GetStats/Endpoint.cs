@@ -1,5 +1,6 @@
 using FastEndpoints;
 using Rgt.Space.Core.Abstractions.Dashboard;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.Dashboard;
 
 namespace Rgt.Space.API.Endpoints.Dashboard.GetStats;
@@ -16,8 +17,8 @@ public sealed class Endpoint : EndpointWithoutRequest<DashboardStatsResponse>
     public override void Configure()
     {
         Get("/api/v1/dashboard/stats");
-        // AllowAnonymous(); // TODO: Remove in Phase 2 (Auth is now live)
-        
+        Permissions(PermissionConstants.PortalRouting.ClientView);
+
         Summary(s =>
         {
             s.Summary = "Get dashboard statistics";

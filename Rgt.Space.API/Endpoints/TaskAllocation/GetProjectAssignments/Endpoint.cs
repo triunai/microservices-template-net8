@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using TaskAllocationQueries = Rgt.Space.Infrastructure.Queries.TaskAllocation;
 
 namespace Rgt.Space.API.Endpoints.TaskAllocation.GetProjectAssignments;
@@ -15,8 +16,7 @@ public sealed class Endpoint(IMediator mediator) : Endpoint<GetProjectAssignment
     public override void Configure()
     {
         Get("/api/v1/projects/{projectId:guid}/assignments");
-        Get("/api/v1/projects/{projectId:guid}/assignments");
-
+        Permissions(PermissionConstants.TaskAllocation.View);
 
         Summary(s =>
         {

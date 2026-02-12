@@ -308,12 +308,11 @@ docker-compose.override.yml
 swagger.json
 openapi.json
 
-# Local development files
+# Local development files (appsettings.Development.json must NOT be tracked — contains dev secrets)
 appsettings.Development.json
 appsettings.Local.json
 **/appsettings.*.json
 !**/appsettings.json
-!**/appsettings.Development.json
 
 # Secrets (never commit these!)
 secrets.json
@@ -400,3 +399,4 @@ share/python-wheels/
 k6-results/
 loadtest-results/
 
+nul

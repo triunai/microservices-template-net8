@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using UnassignRoleCommand = Rgt.Space.Infrastructure.Commands.Identity.UnassignRoleFromUser.Command;
 
 namespace Rgt.Space.API.Endpoints.Identity.UnassignRole;
@@ -10,6 +11,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
     public override void Configure()
     {
         Delete("/api/v1/users/{userId}/roles/{roleId}");
+        Permissions(PermissionConstants.UserManagement.AccessDelete);
         Summary(s =>
         {
             s.Summary = "Unassign role from user";

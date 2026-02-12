@@ -16,8 +16,20 @@ public sealed class PositionType
 
     private PositionType() { }
 
+    /// <summary>
+    /// Creates a new <see cref="PositionType"/>.
+    /// </summary>
+    /// <param name="code">The unique code for the position type.</param>
+    /// <param name="name">The display name.</param>
+    /// <param name="sortOrder">The sort order for UI display. Must be non-negative.</param>
+    /// <param name="description">Optional description.</param>
+    /// <param name="status">The status (Active/Inactive).</param>
+    /// <returns>A new <see cref="PositionType"/> instance.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when sortOrder is negative.</exception>
     public static PositionType Create(string code, string name, int sortOrder, string? description = null, string status = StatusConstants.Active)
     {
+        if (sortOrder < 0) throw new ArgumentOutOfRangeException(nameof(sortOrder), "SortOrder cannot be negative");
+
         return new PositionType
         {
             Code = code,

@@ -1,0 +1,54 @@
+﻿On branch test/rbac-positiontype-verification-8034414594985432536
+Your branch is up to date with 'azure/test/rbac-positiontype-verification-8034414594985432536'.
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	new file:   READMEs/BusinessRules/COMBO-BREAK-DEBUGGER-RULES.md
+	new file:   Rgt.Space.API/Endpoints/Debugging/ComboBreakTestEndpoint.cs
+	modified:   Rgt.Space.Infrastructure/Queries/Debugging/ComboBreakTest.cs
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   READMEs/BusinessRules/COMBO-BREAK-DEBUGGER-RULES.md
+	modified:   READMEs/Tasks/TASK-006-Combo-Break-Debugger.md
+	modified:   Rgt.Space.API/Middleware/ComboBreakHeadersMiddleware.cs
+	modified:   Rgt.Space.API/Middleware/GlobalExceptionHandler.cs
+	modified:   Rgt.Space.API/ProblemDetails/ProblemDetailsFactory.cs
+	modified:   Rgt.Space.API/appsettings.json
+	modified:   Rgt.Space.Core/Debugging/CheckpointTracker.cs
+	modified:   Rgt.Space.Core/Debugging/ComboBreakSnapshot.cs
+	modified:   Rgt.Space.Core/Errors/ErrorCatalog.cs
+	modified:   Rgt.Space.Infrastructure/Auditing/AuditLogger.cs
+	modified:   Rgt.Space.Infrastructure/Extensions.cs
+	modified:   Rgt.Space.Infrastructure/Persistence/Dac/Dashboard/DashboardReadDac.cs
+	modified:   Rgt.Space.Infrastructure/Persistence/Dac/Identity/RoleWriteDac.cs
+	modified:   Rgt.Space.Infrastructure/Persistence/Dac/Identity/UserReadDac.cs
+	modified:   Rgt.Space.Infrastructure/Persistence/Dac/Identity/UserWriteDac.cs
+	modified:   Rgt.Space.Infrastructure/Persistence/Dac/PortalRouting/ClientProjectMappingWriteDac.cs
+	modified:   Rgt.Space.Infrastructure/Persistence/Dac/PortalRouting/ClientWriteDac.cs
+	modified:   Rgt.Space.Infrastructure/Persistence/Dac/PortalRouting/ProjectWriteDac.cs
+	modified:   Rgt.Space.Infrastructure/Persistence/Dac/SalesReadDac.cs
+	modified:   Rgt.Space.Infrastructure/Persistence/Dac/TaskAllocation/ProjectAssignmentReadDac.cs
+	modified:   Rgt.Space.Infrastructure/Persistence/Dac/TaskAllocation/TaskAllocationWriteDac.cs
+	modified:   Rgt.Space.Tests/Integration/Persistence/UserDacIntegrationTests.cs
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	READMEs/Tasks/TASK-007-Combo-Break-DAC-Tracking.md
+	READMEs/Tasks/TASK-008-DAC-Resilience-Standardization.md
+	Rgt.Space.Core/Abstractions/Debugging/IComboBreakRecorder.cs
+	Rgt.Space.Core/Abstractions/Debugging/IComboMapProvider.cs
+	Rgt.Space.Core/Configuration/ComboBreakDebuggerOptions.cs
+	Rgt.Space.Core/Debugging/ComboPosition.cs
+	Rgt.Space.Core/Debugging/ComboPositionCalculator.cs
+	Rgt.Space.Core/Debugging/NullComboMapProvider.cs
+	Rgt.Space.Infrastructure/Debugging/
+	Rgt.Space.Infrastructure/Observability/
+	Rgt.Space.Infrastructure/Persistence/TrackedDacExecutor.cs
+	build_errors.txt
+	build_log.txt
+	error_response.json
+	status_snapshot.txt
+	tests_build.txt
+

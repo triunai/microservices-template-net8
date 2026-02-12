@@ -62,6 +62,13 @@
         public const string ACCOUNT_DISABLED = "ACCOUNT_DISABLED";
         public const string LOCAL_LOGIN_DISABLED = "LOCAL_LOGIN_DISABLED";
         public const string PASSWORD_EXPIRED = "PASSWORD_EXPIRED";
+
+        // ===== Feature Flag Errors (Admin operations) =====
+        public const string FEATURE_NOT_FOUND = "FEATURE_NOT_FOUND";
+        public const string FEATURE_CODE_EXISTS = "FEATURE_CODE_EXISTS";
+        public const string FEATURE_DELETED = "FEATURE_DELETED";
+        public const string CLIENT_DELETED = "CLIENT_DELETED";
+        public const string USER_DELETED = "USER_DELETED";
         
         /// <summary>
         /// Determines if an error code represents a validation error.
@@ -102,6 +109,29 @@
                 return true;
             
             return false;
+        }
+        
+        /// <summary>
+        /// Determines if an error should be recorded by the Combo-Break Debugger.
+        /// Used by Phase 2 recorder to filter out routine/expected errors.
+        /// 
+        /// Records: System errors (5xx), unexpected 4xx (403, 409, 422)
+        /// Skips: Validation errors (400), Not Found (404)
+        /// </summary>
+        public static bool IsRecordableError(string errorCode)
+        {
+            var statusCode = GetStatusCode(errorCode);
+            
+            // Always record system errors (5xx)
+            if (statusCode >= 500) return true;
+            
+            // Skip routine client errors
+            if (IsValidationError(errorCode)) return false;  // 400s from validation
+            if (statusCode == 404) return false;              // Not found is expected
+            
+            // Record unexpected 4xx (403 Forbidden, 409 Conflict, 422 Unprocessable)
+            // These often indicate bugs or security issues worth investigating
+            return true;
         }
         
         /// <summary>
@@ -168,6 +198,13 @@
                 LOCAL_LOGIN_DISABLED => 403,
                 PASSWORD_EXPIRED => 403,
 
+                // Feature Flags
+                FEATURE_NOT_FOUND => 404,
+                FEATURE_CODE_EXISTS => 409,
+                FEATURE_DELETED => 422,
+                CLIENT_DELETED => 422,
+                USER_DELETED => 422,
+
                 // 500 Internal Server Error (default)
                 _ => 500
             };
@@ -229,6 +266,13 @@
                 ROLE_CODE_EXISTS => "Role Code Already Exists",
                 ROLE_HAS_USERS => "Role Has Assigned Users",
                 ROLE_IS_SYSTEM => "Cannot Modify System Role",
+
+                // Feature Flags
+                FEATURE_NOT_FOUND => "Feature Not Found",
+                FEATURE_CODE_EXISTS => "Feature Code Already Exists",
+                FEATURE_DELETED => "Feature Is Deleted",
+                CLIENT_DELETED => "Client Is Deleted",
+                USER_DELETED => "User Is Deleted",
 
                 _ => "An Error Occurred"
             };

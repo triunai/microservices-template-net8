@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.PortalRouting;
 using UpdateProjectCommand = Rgt.Space.Infrastructure.Commands.PortalRouting.UpdateProject.Command;
 
@@ -11,6 +12,7 @@ public sealed class Endpoint(IMediator mediator) : Endpoint<UpdateProjectRequest
     public override void Configure()
     {
         Put("/api/v1/portal-routing/projects/{id}");
+        Permissions(PermissionConstants.PortalRouting.RoutingEdit);
         Summary(s =>
         {
             s.Summary = "Update a project";

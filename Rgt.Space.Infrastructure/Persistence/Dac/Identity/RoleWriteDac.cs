@@ -32,6 +32,8 @@ public sealed class RoleWriteDac : IRoleWriteDac
         return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync(token); // Propagate cancellation to connection open
+            
             const string sql = @"
                 INSERT INTO roles (id, name, code, description, is_system, is_active, created_by, updated_by)
                 VALUES (@Id, @Name, @Code, @Description, FALSE, @IsActive, @CreatedBy, @CreatedBy)
@@ -39,7 +41,7 @@ public sealed class RoleWriteDac : IRoleWriteDac
 
             try
             {
-                return await conn.ExecuteScalarAsync<Guid>(sql, new
+                var p = new
                 {
                     Id = id,
                     Name = name,
@@ -47,7 +49,9 @@ public sealed class RoleWriteDac : IRoleWriteDac
                     Description = description,
                     IsActive = isActive,
                     CreatedBy = createdBy
-                });
+                };
+                var cmd = new CommandDefinition(sql, p, cancellationToken: token);
+                return await conn.ExecuteScalarAsync<Guid>(cmd);
             }
             catch (PostgresException ex) when (ex.SqlState == "23505") // Unique violation
             {
@@ -66,6 +70,8 @@ public sealed class RoleWriteDac : IRoleWriteDac
         await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync(token); // Propagate cancellation to connection open
+            
             const string sql = @"
                 UPDATE roles 
                 SET name = @Name, 
@@ -75,14 +81,16 @@ public sealed class RoleWriteDac : IRoleWriteDac
                     updated_at = NOW() AT TIME ZONE 'utc'
                 WHERE id = @Id";
 
-            await conn.ExecuteAsync(sql, new
+            var p = new
             {
                 Id = id,
                 Name = name,
                 Description = description,
                 IsActive = isActive,
                 UpdatedBy = updatedBy
-            });
+            };
+            var cmd = new CommandDefinition(sql, p, cancellationToken: token);
+            await conn.ExecuteAsync(cmd);
         }, ct);
     }
 
@@ -92,9 +100,12 @@ public sealed class RoleWriteDac : IRoleWriteDac
         await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync(token); // Propagate cancellation to connection open
+            
             // Hard delete - roles don't need audit trail
             const string sql = "DELETE FROM roles WHERE id = @Id";
-            await conn.ExecuteAsync(sql, new { Id = id });
+            var cmd = new CommandDefinition(sql, new { Id = id }, cancellationToken: token);
+            await conn.ExecuteAsync(cmd);
         }, ct);
     }
 
@@ -104,6 +115,7 @@ public sealed class RoleWriteDac : IRoleWriteDac
         return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync(token); // Propagate cancellation to connection open
             
             // Generate ID using UUID v7
             var id = Uuid7.NewUuid7();
@@ -114,13 +126,15 @@ public sealed class RoleWriteDac : IRoleWriteDac
                 ON CONFLICT (user_id, role_id) DO NOTHING
                 RETURNING id";
 
-            var result = await conn.ExecuteScalarAsync<Guid?>(sql, new
+            var p = new
             {
                 Id = id,
                 UserId = userId,
                 RoleId = roleId,
                 AssignedBy = assignedBy
-            });
+            };
+            var cmd = new CommandDefinition(sql, p, cancellationToken: token);
+            var result = await conn.ExecuteScalarAsync<Guid?>(cmd);
 
             return result;
         }, ct);
@@ -132,8 +146,11 @@ public sealed class RoleWriteDac : IRoleWriteDac
         return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync(token); // Propagate cancellation to connection open
+            
             const string sql = "DELETE FROM user_roles WHERE user_id = @UserId AND role_id = @RoleId";
-            var rows = await conn.ExecuteAsync(sql, new { UserId = userId, RoleId = roleId });
+            var cmd = new CommandDefinition(sql, new { UserId = userId, RoleId = roleId }, cancellationToken: token);
+            var rows = await conn.ExecuteAsync(cmd);
             return rows > 0;
         }, ct);
     }

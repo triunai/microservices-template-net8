@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.PortalRouting;
 using Rgt.Space.Infrastructure.Commands.PortalRouting;
 
@@ -11,7 +12,7 @@ public sealed class Endpoint(IMediator mediator, Rgt.Space.Core.Abstractions.Ide
     public override void Configure()
     {
         Put("/api/v1/portal-routing/mappings/{id:guid}");
-        // AllowAnonymous(); // TODO: Remove in Phase 2
+        Permissions(PermissionConstants.PortalRouting.RoutingEdit);
 
         Summary(s =>
         {

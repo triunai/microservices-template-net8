@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.PortalRouting;
 using UpdateClientCommand = Rgt.Space.Infrastructure.Commands.PortalRouting.UpdateClient.Command;
 
@@ -11,6 +12,7 @@ public sealed class Endpoint(IMediator mediator) : Endpoint<UpdateClientRequest>
     public override void Configure()
     {
         Put("/api/v1/portal-routing/clients/{id}");
+        Permissions(PermissionConstants.PortalRouting.ClientEdit);
         Summary(s =>
         {
             s.Summary = "Update a client";

@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.Identity;
 using Rgt.Space.Infrastructure.Queries.Identity;
 
@@ -18,8 +19,8 @@ public class Endpoint : Endpoint<GetAllUsers.Query>
     public override void Configure()
     {
         Get("/api/v1/users");
-        // AllowAnonymous(); // TODO: Auth
-        
+        Permissions(PermissionConstants.UserManagement.AccountView);
+
         Summary(s =>
         {
             s.Summary = "Get all users";

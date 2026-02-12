@@ -2,6 +2,7 @@ using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
 using Rgt.Space.Core.Abstractions.Identity;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.Identity;
 using CreateUserCommand = Rgt.Space.Infrastructure.Commands.Identity.CreateUser.Command;
 
@@ -12,6 +13,7 @@ public sealed class Endpoint(IMediator mediator, ICurrentUser currentUser) : End
     public override void Configure()
     {
         Post("/api/v1/users");
+        Permissions(PermissionConstants.UserManagement.AccountInsert);
         Summary(s =>
         {
             s.Summary = "Create a new user";

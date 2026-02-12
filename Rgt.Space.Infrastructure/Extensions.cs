@@ -1,7 +1,9 @@
 ﻿using Rgt.Space.Core.Abstractions;
 using Rgt.Space.Core.Abstractions.Auditing;
+using Rgt.Space.Core.Abstractions.Debugging;
 using Rgt.Space.Core.Abstractions.Tenancy;
 using Rgt.Space.Core.Configuration;
+using Rgt.Space.Core.Debugging;
 using Rgt.Space.Infrastructure.Auditing;
 using Rgt.Space.Infrastructure.Behaviors;
 using Rgt.Space.Infrastructure.Queries.Sales;
@@ -14,6 +16,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Hosting;
 using Polly;
 using Polly.Registry;
 using StackExchange.Redis;
@@ -68,6 +71,21 @@ namespace Rgt.Space.Infrastructure
                     logger);
             });
 
+            // Register AuditDb pipeline (single-database for Audit Logs)
+            services.AddResiliencePipeline("AuditDb", (builder, context) =>
+            {
+                // Usage: Write-heavy, non-critical audit logs
+                // Config: Uses AuditDb settings
+                var settings = context.ServiceProvider.GetRequiredService<IOptions<ResilienceSettings>>().Value.AuditDb;
+                var logger = context.ServiceProvider.GetRequiredService<ILogger<AuditLogger>>();
+
+                builder.AddPipelineFromSettings(
+                    settings,
+                    ResiliencePolicies.IsSqlTransientError,
+                    "AuditDb",
+                    logger);
+            });
+
             services.AddResiliencePipeline(ResiliencePolicies.RedisKey, (builder, context) =>
             {
                 var settings = context.ServiceProvider.GetRequiredService<IOptions<ResilienceSettings>>().Value.Redis;
@@ -83,14 +101,57 @@ namespace Rgt.Space.Infrastructure
             // Register keyed per-tenant pipelines at startup
             services.AddResiliencePipelineRegistry<string>();
 
-            // Register MediatR with audit pipeline behavior
+            // Register MediatR with pipeline behaviors
             services.AddMediatR(cfg =>
             {
                 cfg.RegisterServicesFromAssembly(typeof(GetSaleById.Handler).Assembly);
                 
-                // Add audit logging pipeline behavior (intercepts all queries/commands)
+                // Pipeline behavior order matters!
+                // 1. Checkpoint tracking (must be first to track handler entry before audit)
+                cfg.AddOpenBehavior(typeof(CheckpointPipelineBehavior<,>));
+                
+                // 2. Audit logging (intercepts all queries/commands, runs after checkpoint tracking)
                 cfg.AddOpenBehavior(typeof(AuditLoggingBehavior<,>));
             });
+            
+            // Combo-Break Debugger: Request-scoped checkpoint tracker
+            services.AddScoped<ICheckpointTracker, CheckpointTracker>();
+            
+            // Combo-Break Debugger: DAC layer tracking executor (TASK-007)
+            services.AddScoped<Persistence.TrackedDacExecutor>();
+            
+            // Combo-Break Debugger: Bind configuration options
+            services.Configure<Core.Configuration.ComboBreakDebuggerOptions>(
+                configuration.GetSection(Core.Configuration.ComboBreakDebuggerOptions.SectionName));
+            
+            // Combo-Break Debugger: Phase 2 - In-memory recorder (dev-only)
+            // Production uses NullComboBreakRecorder (zero memory overhead)
+            services.AddSingleton<IComboBreakRecorder>(sp =>
+            {
+                var env = sp.GetRequiredService<IHostEnvironment>();
+                return env.IsDevelopment()
+                    ? new Debugging.ComboBreakRecorder()
+                    : new Debugging.NullComboBreakRecorder();
+            });
+            
+            // Combo-Break Debugger: Phase 3 - Combo map provider
+            // In Development: Use ExampleComboMapProvider for testing
+            // In Production: Use NullComboMapProvider (no combos = no overhead)
+            // Solutions can override with their own AppComboMapProvider
+            services.AddSingleton<IComboMapProvider>(sp =>
+            {
+                var env = sp.GetRequiredService<IHostEnvironment>();
+                return env.IsDevelopment()
+                    ? new Debugging.ExampleComboMapProvider()
+                    : new NullComboMapProvider();
+            });
+            
+            // Combo-Break Debugger: Configure ActivitySource (Phase 3)
+            var debuggerOptions = configuration
+                .GetSection(Core.Configuration.ComboBreakDebuggerOptions.SectionName)
+                .Get<Core.Configuration.ComboBreakDebuggerOptions>() 
+                ?? new Core.Configuration.ComboBreakDebuggerOptions();
+            Observability.BusinessActivitySource.Configure(debuggerOptions);
 
             // Redis distributed cache with lazy singleton (ready for future use: product catalog, sessions)
             // Lazy connection - connects on first use, doesn't block startup
@@ -146,11 +207,8 @@ namespace Rgt.Space.Infrastructure
             // Register Auth Services (JWT Token Generation)
             services.AddSingleton<Services.Auth.ITokenService, Services.Auth.TokenService>();
 
-            // Current User Context
-            // TODO: Make this configurable via appsettings (e.g., Auth:EnableMockAuth)
-            // For now, we default to DevCurrentUser to unblock development
-            services.AddScoped<Core.Abstractions.Identity.ICurrentUser, CurrentUser>(); 
-            // services.AddScoped<Core.Abstractions.Identity.ICurrentUser, DevCurrentUser>();
+            // Current User Context — reads from JWT claims (x-local-user-id, sub, email, tid)
+            services.AddScoped<Core.Abstractions.Identity.ICurrentUser, CurrentUser>();
             
             // Register Portal Routing DACs
             services.AddScoped<Core.Abstractions.PortalRouting.IClientReadDac, Persistence.Dac.PortalRouting.ClientReadDac>();
@@ -166,6 +224,13 @@ namespace Rgt.Space.Infrastructure
 
             // Register Dashboard DACs
             services.AddScoped<Core.Abstractions.Dashboard.IDashboardReadDac, Persistence.Dac.Dashboard.DashboardReadDac>();
+
+            // Register Feature Flag DACs
+            services.AddScoped<Core.Abstractions.Features.IFeatureReadDac, Persistence.Dac.Features.FeatureReadDac>();
+            services.AddScoped<Core.Abstractions.Features.IFeatureWriteDac, Persistence.Dac.Features.FeatureWriteDac>();
+
+            // Register Feature Gate Service
+            services.AddScoped<Core.Abstractions.Features.IFeatureGate, Services.Features.FeatureGate>();
 
             // Register Mapperly mappers (singleton - stateless, compile-time generated)
             // Zero runtime overhead, no reflection, just pure generated C# code

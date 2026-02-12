@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.PortalRouting;
 using CreateClientCommand = Rgt.Space.Infrastructure.Commands.PortalRouting.CreateClient.Command;
 
@@ -11,6 +12,7 @@ public sealed class Endpoint(IMediator mediator) : Endpoint<CreateClientRequest>
     public override void Configure()
     {
         Post("/api/v1/portal-routing/clients");
+        Permissions(PermissionConstants.PortalRouting.ClientInsert);
         Summary(s =>
         {
             s.Summary = "Create a new client";

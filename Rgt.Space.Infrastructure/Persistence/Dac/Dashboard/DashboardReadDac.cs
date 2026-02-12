@@ -16,48 +16,24 @@ namespace Rgt.Space.Infrastructure.Persistence.Dac.Dashboard;
 public sealed class DashboardReadDac : IDashboardReadDac
 {
     private readonly ISystemConnectionFactory _connFactory;
-    private readonly ResiliencePipelineRegistry<string> _pipelineRegistry;
-    private readonly IOptions<ResilienceSettings> _resilienceSettings;
+    private readonly ResiliencePipeline _pipeline;
     private readonly ILogger<DashboardReadDac> _logger;
 
     public DashboardReadDac(
         ISystemConnectionFactory connFactory,
-        ResiliencePipelineRegistry<string> pipelineRegistry,
-        IOptions<ResilienceSettings> resilienceSettings,
+        ResiliencePipelineProvider<string> pipelineProvider,
         ILogger<DashboardReadDac> logger)
     {
         _connFactory = connFactory;
-        _pipelineRegistry = pipelineRegistry;
-        _resilienceSettings = resilienceSettings;
+        _pipeline = pipelineProvider.GetPipeline("PortalDb");
         _logger = logger;
-    }
-
-    private ResiliencePipeline GetPipeline()
-    {
-        const string pipelineKey = "System";
-        
-        if (!_pipelineRegistry.TryGetPipeline(pipelineKey, out var pipeline))
-        {
-            _pipelineRegistry.TryAddBuilder(pipelineKey, (builder, context) =>
-            {
-                var settings = _resilienceSettings.Value.MasterDb;
-                builder.AddPipelineFromSettings(
-                    settings,
-                    ResiliencePolicies.IsSqlTransientError,
-                    $"Db:{pipelineKey}",
-                    _logger);
-            });
-            pipeline = _pipelineRegistry.GetPipeline(pipelineKey);
-        }
-        return pipeline;
     }
 
     public async Task<DashboardStatsResponse> GetStatsAsync(CancellationToken ct)
     {
-        var pipeline = GetPipeline();
         var connString = await _connFactory.GetConnectionStringAsync(ct);
 
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
             await conn.OpenAsync(token);
@@ -73,19 +49,30 @@ public sealed class DashboardReadDac : IDashboardReadDac
                     (SELECT COUNT(*) FROM projects WHERE status = 'Inactive' AND is_deleted = FALSE) as InactiveProjects,
                     
                     -- Calculate Vacancies: (ActiveProjects * 3) - (Filled Mandatory Roles)
+                    -- Calculate Vacancies: (Total Seats Needed) - (Seats Filled)
+                    
+                    -- LOGIC BREAKDOWN:
+                    -- 1. Demand: Every 'Active' project requires exactly 3 roles (Tech, Func, Support).
+                    --    Example: 10 Active Projects * 3 = 30 Mandated Seats.
+                    -- 2. Supply: Count actual humans assigned to those 3 specific roles.
+                    --    (We ignore 'Backup' roles and Assignments on 'Inactive' projects).
+                    -- 3. Result: 30 Seats - 20 Assigned = 10 Pending Vacancies.
                     (
+                        -- Part A: Total Demand (The ""Target"")
                         (SELECT COUNT(*) * 3 FROM projects WHERE status = 'Active' AND is_deleted = FALSE)
                         -
+                        -- Part B: Current Supply (The ""Actual"")
                         (SELECT COUNT(*) 
                          FROM project_assignments pa
                          JOIN projects p ON pa.project_id = p.id
-                         WHERE pa.position_code IN ('TECH_PIC', 'FUNC_PIC', 'SUPPORT_PIC')
-                           AND pa.is_deleted = FALSE
-                           AND p.status = 'Active'
+                         WHERE pa.position_code IN ('TECH_PIC', 'FUNC_PIC', 'SUPPORT_PIC') -- Only count Critical Roles
+                           AND pa.is_deleted = FALSE  -- Ignore ""Zombie"" assignments
+                           AND p.status = 'Active'    -- Ignore assignments on archived projects
                            AND p.is_deleted = FALSE)
                     ) as PendingVacancies";
 
-            var kpis = await conn.QuerySingleAsync<DashboardKpis>(kpiSql);
+            var kpiCmd = new CommandDefinition(kpiSql, cancellationToken: token);
+            var kpis = await conn.QuerySingleAsync<DashboardKpis>(kpiCmd);
 
             // 2. Assignment Distribution
             const string distSql = @"
@@ -95,7 +82,8 @@ public sealed class DashboardReadDac : IDashboardReadDac
                 GROUP BY position_code
                 ORDER BY Count DESC";
 
-            var distribution = (await conn.QueryAsync<AssignmentDistribution>(distSql)).ToList();
+            var distCmd = new CommandDefinition(distSql, cancellationToken: token);
+            var distribution = (await conn.QueryAsync<AssignmentDistribution>(distCmd)).ToList();
 
             // 3. Top Vacancies (Projects missing mandatory roles)
             // This is a bit complex to do purely in SQL efficiently, 
@@ -128,7 +116,8 @@ public sealed class DashboardReadDac : IDashboardReadDac
                 ORDER BY pr.name
                 LIMIT 10";
 
-            var vacancies = (await conn.QueryAsync<VacantPosition>(vacancySql)).ToList();
+            var vacancyCmd = new CommandDefinition(vacancySql, cancellationToken: token);
+            var vacancies = (await conn.QueryAsync<VacantPosition>(vacancyCmd)).ToList();
 
             return new DashboardStatsResponse
             {

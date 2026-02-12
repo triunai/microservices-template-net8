@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using DeleteRoleCommand = Rgt.Space.Infrastructure.Commands.Identity.DeleteRole.Command;
 
 namespace Rgt.Space.API.Endpoints.Roles.DeleteRole;
@@ -10,6 +11,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
     public override void Configure()
     {
         Delete("/api/v1/roles/{roleId}");
+        Permissions(PermissionConstants.UserManagement.AccessDelete);
         Summary(s =>
         {
             s.Summary = "Delete a role";

@@ -1,5 +1,6 @@
 ﻿using FastEndpoints;
 using MediatR;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Infrastructure.Queries.Sales;
 using Rgt.Space.Core.Domain.Contracts.Sales;
 using Rgt.Space.API.ProblemDetails;
@@ -11,8 +12,8 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
     public override void Configure()
     {
         Get("/api/v1/sales/{id:guid}");
-        AllowAnonymous();
-        
+        Permissions(PermissionConstants.PortalRouting.ClientView);
+
         Summary(s =>
         {
             s.Summary = "Get sale by ID (v1)";

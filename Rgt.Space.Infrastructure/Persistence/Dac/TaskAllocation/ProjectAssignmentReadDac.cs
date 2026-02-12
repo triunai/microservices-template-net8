@@ -15,50 +15,25 @@ namespace Rgt.Space.Infrastructure.Persistence.Dac.TaskAllocation;
 public sealed class ProjectAssignmentReadDac : IProjectAssignmentReadDac
 {
     private readonly ISystemConnectionFactory _systemConnFactory;
-    private readonly ResiliencePipelineRegistry<string> _pipelineRegistry;
-    private readonly IOptions<ResilienceSettings> _resilienceSettings;
+    private readonly ResiliencePipeline _pipeline;
     private readonly ILogger<ProjectAssignmentReadDac> _logger;
 
     public ProjectAssignmentReadDac(
         ISystemConnectionFactory systemConnFactory,
-        ResiliencePipelineRegistry<string> pipelineRegistry,
-        IOptions<ResilienceSettings> resilienceSettings,
+        ResiliencePipelineProvider<string> pipelineProvider,
         ILogger<ProjectAssignmentReadDac> logger)
     {
         _systemConnFactory = systemConnFactory;
-        _pipelineRegistry = pipelineRegistry;
-        _resilienceSettings = resilienceSettings;
+        _pipeline = pipelineProvider.GetPipeline("PortalDb");
         _logger = logger;
-    }
-
-    private ResiliencePipeline GetPipeline()
-    {
-        // Project Assignment reads are treated as system/global operations here
-        const string pipelineKey = "System";
-        
-        if (!_pipelineRegistry.TryGetPipeline(pipelineKey, out var pipeline))
-        {
-            _pipelineRegistry.TryAddBuilder(pipelineKey, (builder, context) =>
-            {
-                var settings = _resilienceSettings.Value.MasterDb;
-                builder.AddPipelineFromSettings(
-                    settings,
-                    ResiliencePolicies.IsSqlTransientError,
-                    $"Db:{pipelineKey}",
-                    _logger);
-            });
-            pipeline = _pipelineRegistry.GetPipeline(pipelineKey);
-        }
-        return pipeline;
     }
 
     public async Task<IReadOnlyList<ProjectAssignmentReadModel>> GetAllAsync(CancellationToken ct)
     {
         // "God View" - Global query across all projects
-        var pipeline = GetPipeline();
         var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
 
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
             const string sql = @"
@@ -89,10 +64,9 @@ public sealed class ProjectAssignmentReadDac : IProjectAssignmentReadDac
 
     public async Task<IReadOnlyList<ProjectAssignmentReadModel>> GetByProjectIdAsync(Guid projectId, CancellationToken ct)
     {
-        var pipeline = GetPipeline();
         var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
 
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
             const string sql = @"
@@ -131,10 +105,9 @@ public sealed class ProjectAssignmentReadDac : IProjectAssignmentReadDac
         string? search, 
         CancellationToken ct)
     {
-        var pipeline = GetPipeline();
         var connString = await _systemConnFactory.GetConnectionStringAsync(ct);
 
-        return await pipeline.ExecuteAsync(async token =>
+        return await _pipeline.ExecuteAsync(async token =>
         {
             await using var conn = new NpgsqlConnection(connString);
             
@@ -150,9 +123,9 @@ public sealed class ProjectAssignmentReadDac : IProjectAssignmentReadDac
                     FROM projects p
                     JOIN clients c ON p.client_id = c.id
                     WHERE p.is_deleted = FALSE 
-                      AND c.is_deleted = FALSE
-                      AND (@ClientId IS NULL OR p.client_id = @ClientId)
-                      AND (@Search IS NULL OR p.name ILIKE @Search OR c.name ILIKE @Search)
+                    AND c.is_deleted = FALSE
+                    AND (@ClientId IS NULL OR p.client_id = @ClientId)
+                    AND (@Search IS NULL OR p.name ILIKE @Search OR c.name ILIKE @Search)
                 ),
                 total_count AS (
                     SELECT COUNT(*) AS cnt FROM visible_projects

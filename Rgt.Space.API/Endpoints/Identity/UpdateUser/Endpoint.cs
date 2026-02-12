@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Infrastructure.Commands.Identity;
 
 namespace Rgt.Space.API.Endpoints.Identity.UpdateUser;
@@ -26,8 +27,8 @@ public class Endpoint : Endpoint<UpdateUserRequest>
     public override void Configure()
     {
         Put("/api/v1/users/{userId:guid}");
-        AllowAnonymous(); // TODO: Auth
-        
+        Permissions(PermissionConstants.UserManagement.AccountEdit);
+
         Summary(s =>
         {
             s.Summary = "Update user details";

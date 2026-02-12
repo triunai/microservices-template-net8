@@ -1,5 +1,6 @@
 using FastEndpoints;
 using MediatR;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Infrastructure.Commands.Identity;
 
 namespace Rgt.Space.API.Endpoints.Identity.GrantPermission;
@@ -18,7 +19,7 @@ public sealed class Endpoint : Endpoint<Request>
     public override void Configure()
     {
         Post("/api/v1/users/{UserId}/permissions/grant");
-        // AllowAnonymous(); // TODO: Remove in Phase 2
+        Permissions(PermissionConstants.UserManagement.AccessInsert);
     }
 
     public override async Task HandleAsync(Request req, CancellationToken ct)

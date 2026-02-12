@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.PortalRouting;
 using CreateProjectCommand = Rgt.Space.Infrastructure.Commands.PortalRouting.CreateProject.Command;
 
@@ -11,6 +12,7 @@ public sealed class Endpoint(IMediator mediator) : Endpoint<CreateProjectRequest
     public override void Configure()
     {
         Post("/api/v1/portal-routing/projects");
+        Permissions(PermissionConstants.PortalRouting.RoutingInsert);
         Summary(s =>
         {
             s.Summary = "Create a new project";

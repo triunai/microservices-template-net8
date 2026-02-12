@@ -60,6 +60,10 @@ public static class HttpConstants
         public const string RequestId = "X-Request-Id";
         public const string TraceId = "X-Trace-Id";
         
+        // Combo-Break Debugger (dev-only checkpoint tracking)
+        public const string CheckpointLast = "X-Checkpoint-Last";
+        public const string CheckpointCurrent = "X-Checkpoint-Current";
+        
         // Multi-tenancy
         public const string Tenant = "X-Tenant";
         
@@ -95,6 +99,11 @@ public static class HttpConstants
         public const string TenantId = "TenantId";
         public const string UserId = "UserId";
         public const string ClientId = "ClientId";
+        
+        // Combo-Break Debugger (checkpoint tracking)
+        public const string CheckpointLast = "CheckpointLast";
+        public const string CheckpointCurrent = "CheckpointCurrent";
+        public const string CurrentHandlerName = "CurrentHandlerName";
     }
 }
 

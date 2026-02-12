@@ -99,7 +99,7 @@ namespace Rgt.Space.API.ProblemDetails
         }
         
         /// <summary>
-        /// Enriches ProblemDetails with correlation ID, tenant ID, trace ID, and error code.
+        /// Enriches ProblemDetails with correlation ID, tenant ID, trace ID, checkpoints, and error code.
         /// </summary>
         private static void EnrichWithContext(
             Microsoft.AspNetCore.Mvc.ProblemDetails problemDetails,
@@ -116,6 +116,29 @@ namespace Rgt.Space.API.ProblemDetails
             if (httpContext.Items.TryGetValue(HttpConstants.ContextKeys.TenantId, out var tenantId))
             {
                 problemDetails.Extensions["tenantId"] = tenantId?.ToString();
+            }
+            
+            // Add checkpoint info (for Combo-Break Debugger)
+            // ✅ FIX: Read tracker directly first (works for Result.Fail), Items fallback for edge cases
+            var tracker = httpContext.RequestServices.GetService<Rgt.Space.Core.Abstractions.Debugging.ICheckpointTracker>();
+            if (tracker != null)
+            {
+                // Tracker is available — use it directly (works for exceptions AND Result.Fail)
+                problemDetails.Extensions["checkpointCurrent"] = tracker.Current;
+                problemDetails.Extensions["checkpointLast"] = tracker.Last;
+            }
+            else
+            {
+                // Fallback to Items (legacy path, should rarely happen)
+                if (httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CheckpointCurrent, out var checkpointCurrent))
+                {
+                    problemDetails.Extensions["checkpointCurrent"] = checkpointCurrent?.ToString();
+                }
+                
+                if (httpContext.Items.TryGetValue(HttpConstants.ContextKeys.CheckpointLast, out var checkpointLast))
+                {
+                    problemDetails.Extensions["checkpointLast"] = checkpointLast?.ToString();
+                }
             }
             
             // Add trace ID (for distributed tracing)
