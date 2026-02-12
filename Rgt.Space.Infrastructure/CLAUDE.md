@@ -46,11 +46,11 @@ public sealed class UserReadDac : IUserReadDac
     public UserReadDac(ISystemConnectionFactory connFactory,
         ResiliencePipelineProvider<string> pipelineProvider, ...)
     {
-        _pipeline = pipelineProvider.GetPipeline("System");
+        _pipeline = pipelineProvider.GetPipeline("PortalDb");
     }
 }
 ```
-Used by: Identity DACs, Role DACs, Portal Routing DACs, Dashboard DAC
+Used by: ALL DACs (Identity, Role, Portal Routing, Dashboard, TaskAllocation, Features)
 
 **Pattern B — Multi-tenant (dynamic pipeline per tenant):**
 ```csharp

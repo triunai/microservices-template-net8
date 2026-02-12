@@ -119,18 +119,18 @@ GET    /api/v1/features/evaluate                    Bulk eval (AllowAnonymous)
 
 All routes hardcoded as `/api/v1/...`. API versioning configured but only v1 exists.
 
-## Middleware Pipeline (EXACT ORDER)
+## Middleware Pipeline (EXACT ORDER — updated TASK-014)
 
 ```
  1. UseExceptionHandler()              → GlobalExceptionHandler (catches all, ProblemDetails)
  2. CorrelationIdMiddleware            → Generates/extracts X-Correlation-Id, pushes to LogContext
  3. ComboBreakHeadersMiddleware        → DEV ONLY: adds X-Checkpoint-* headers to 5xx responses
- 4. TenantResolutionMiddleware         → Extracts tenant: JWT tid → X-Tenant header → ?tenantId query
- 5. UseRateLimiter()                   → Per-tenant sliding window (1000 req / 10s)
- 6. RateLimitHeadersMiddleware         → Adds X-RateLimit-* info headers to all responses
- 7. UseCors("AllowAll")                → Wide-open CORS (needs restriction for prod)
- 8. UseSerilogRequestLogging()         → Enriches with CorrelationId, TenantId, ClientIP
- 9. UseAuthentication()                → Dual JWT validation (SSO + Local via MultiScheme)
+ 4. UseRateLimiter()                   → IP-based sliding window (1000 req / 10s)
+ 5. RateLimitHeadersMiddleware         → Adds X-RateLimit-* info headers to all responses
+ 6. UseCors("Default")                 → Env-conditional (AllowAny dev, whitelist prod)
+ 7. UseSerilogRequestLogging()         → Enriches with CorrelationId, TenantId, ClientIP
+ 8. UseAuthentication()                → Dual JWT validation (SSO + Local via MultiScheme)
+ 9. TenantResolutionMiddleware         → JWT tid (authoritative) → X-Tenant header (fallback). Mismatch → 403
 10. PermissionLoadingMiddleware        → Loads DB permissions → adds as "permissions" claims (1-min cache)
 11. UseAuthorization()                 → Standard ASP.NET authz
 12. UseFastEndpoints()                 → Endpoint routing + built-in exception handling

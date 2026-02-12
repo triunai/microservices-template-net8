@@ -189,8 +189,10 @@ For multi-file tasks, deploy parallel subagents with file-level boundaries. Prov
 
 ## Known Tech Debt
 
-1. **Tenant header spoofing**: Authenticated users can set `X-Tenant` header — tenant derived from header, not validated JWT claim. Portal Routing uses explicit `clientId` from routes to mitigate.
-2. **TenantResolutionMiddleware order**: JWT `tid` claim check runs before `UseAuthentication()` — effectively dead code for authenticated requests.
-3. **RequireHttpsMetadata = false**: SSO bearer metadata discovery not enforcing HTTPS (dev setting leaked to config).
-4. **CORS AllowAll**: Wide-open CORS policy — needs restriction for production.
+1. ~~**Tenant header spoofing**~~: FIXED (TASK-014) — JWT tid validated, mismatch → 403.
+2. ~~**TenantResolutionMiddleware order**~~: FIXED (TASK-014) — runs after UseAuthentication().
+3. ~~**RequireHttpsMetadata = false**~~: FIXED (TASK-014) — gated behind IsDevelopment().
+4. ~~**CORS AllowAll**~~: FIXED (TASK-014) — environment-conditional, whitelist in prod.
 5. **FluentAssertions pinned to v6**: Safety lock comment in Tests.csproj — v8 requires commercial license.
+6. **Health check `/health`**: Exposes infrastructure details without auth (low risk for internal APIs).
+7. **AppException messages**: May contain internal details in client-facing errors (needs audit).

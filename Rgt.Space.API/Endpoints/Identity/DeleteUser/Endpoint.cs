@@ -2,6 +2,7 @@ using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
 using Rgt.Space.Core.Abstractions.Identity;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.Identity;
 using DeleteUserCommand = Rgt.Space.Infrastructure.Commands.Identity.DeleteUser.Command;
 
@@ -12,6 +13,7 @@ public sealed class Endpoint(IMediator mediator, ICurrentUser currentUser) : End
     public override void Configure()
     {
         Delete("/api/v1/users/{userId}");
+        Permissions(PermissionConstants.UserManagement.AccountDelete);
         Summary(s =>
         {
             s.Summary = "Delete a user";

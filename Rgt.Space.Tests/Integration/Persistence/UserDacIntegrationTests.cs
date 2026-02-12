@@ -35,7 +35,7 @@ public class UserDacIntegrationTests
         
         // Mock the provider to return an empty pipeline
         var pipelineProvider = Substitute.For<ResiliencePipelineProvider<string>>();
-        pipelineProvider.GetPipeline("System").Returns(ResiliencePipeline.Empty);
+        pipelineProvider.GetPipeline("PortalDb").Returns(ResiliencePipeline.Empty);
         
         var logger = Substitute.For<ILogger<UserReadDac>>();
         var dac = new UserReadDac(connFactory, pipelineProvider, logger);
@@ -89,7 +89,7 @@ public class UserDacIntegrationTests
         
         // Mock provider
         var pipelineProvider = Substitute.For<ResiliencePipelineProvider<string>>();
-        pipelineProvider.GetPipeline("System").Returns(ResiliencePipeline.Empty);
+        pipelineProvider.GetPipeline("PortalDb").Returns(ResiliencePipeline.Empty);
 
         var writeDac = new UserWriteDac(connFactory, pipelineProvider);
         var readDac = new UserReadDac(connFactory, pipelineProvider, Substitute.For<ILogger<UserReadDac>>());
@@ -115,7 +115,7 @@ public class UserDacIntegrationTests
         
         // Mock provider
         var pipelineProvider = Substitute.For<ResiliencePipelineProvider<string>>();
-        pipelineProvider.GetPipeline("System").Returns(ResiliencePipeline.Empty);
+        pipelineProvider.GetPipeline("PortalDb").Returns(ResiliencePipeline.Empty);
 
         var writeDac = new UserWriteDac(connFactory, pipelineProvider);
         var readDac = new UserReadDac(connFactory, pipelineProvider, Substitute.For<ILogger<UserReadDac>>());

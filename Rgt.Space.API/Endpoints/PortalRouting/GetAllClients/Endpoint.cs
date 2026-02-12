@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Infrastructure.Queries.PortalRouting;
 using GetAllClientsQuery = Rgt.Space.Infrastructure.Queries.PortalRouting.GetAllClients.GetAllClientsQuery;
 
@@ -11,7 +12,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
     public override void Configure()
     {
         Get("/api/v1/portal-routing/clients");
-        // AllowAnonymous(); // TODO: Add proper authorization
+        Permissions(PermissionConstants.PortalRouting.ClientView);
 
         Summary(s =>
         {

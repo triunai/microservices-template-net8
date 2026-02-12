@@ -24,8 +24,7 @@ public sealed class ProjectAssignmentReadDac : IProjectAssignmentReadDac
         ILogger<ProjectAssignmentReadDac> logger)
     {
         _systemConnFactory = systemConnFactory;
-        // Standard Pattern A: Inject and use the pre-registered "System" pipeline
-        _pipeline = pipelineProvider.GetPipeline("System");
+        _pipeline = pipelineProvider.GetPipeline("PortalDb");
         _logger = logger;
     }
 

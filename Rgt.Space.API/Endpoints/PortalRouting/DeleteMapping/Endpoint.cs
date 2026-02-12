@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Infrastructure.Commands.PortalRouting;
 
 namespace Rgt.Space.API.Endpoints.PortalRouting.DeleteMapping;
@@ -10,7 +11,7 @@ public sealed class Endpoint(IMediator mediator, Rgt.Space.Core.Abstractions.Ide
     public override void Configure()
     {
         Delete("/api/v1/portal-routing/mappings/{id:guid}");
-        // AllowAnonymous(); // TODO: Remove in Phase 2
+        Permissions(PermissionConstants.PortalRouting.RoutingDelete);
 
         Summary(s =>
         {

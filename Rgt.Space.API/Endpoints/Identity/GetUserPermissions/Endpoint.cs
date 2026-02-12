@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.Identity;
 using Rgt.Space.Infrastructure.Queries.Identity;
 
@@ -18,8 +19,8 @@ public class Endpoint : EndpointWithoutRequest<IReadOnlyList<UserPermissionRespo
     public override void Configure()
     {
         Get("/api/v1/users/{userId:guid}/permissions");
-        // AllowAnonymous(); // TODO: Auth
-        
+        Permissions(PermissionConstants.UserManagement.AccessView);
+
         Summary(s =>
         {
             s.Summary = "Get user permissions";

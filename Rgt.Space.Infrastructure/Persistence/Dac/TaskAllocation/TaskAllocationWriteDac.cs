@@ -23,8 +23,7 @@ public sealed class TaskAllocationWriteDac : ITaskAllocationWriteDac
         ILogger<TaskAllocationWriteDac> logger)
     {
         _systemConnFactory = systemConnFactory;
-        // Standard Pattern A: Inject and use the pre-registered "System" pipeline
-        _pipeline = pipelineProvider.GetPipeline("System");
+        _pipeline = pipelineProvider.GetPipeline("PortalDb");
         _logger = logger;
     }
 

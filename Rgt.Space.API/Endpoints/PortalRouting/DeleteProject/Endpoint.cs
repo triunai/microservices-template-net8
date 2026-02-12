@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using DeleteProjectCommand = Rgt.Space.Infrastructure.Commands.PortalRouting.DeleteProject.Command;
 
 namespace Rgt.Space.API.Endpoints.PortalRouting.DeleteProject;
@@ -10,6 +11,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
     public override void Configure()
     {
         Delete("/api/v1/portal-routing/projects/{id}");
+        Permissions(PermissionConstants.PortalRouting.RoutingDelete);
         Summary(s =>
         {
             s.Summary = "Delete a project";

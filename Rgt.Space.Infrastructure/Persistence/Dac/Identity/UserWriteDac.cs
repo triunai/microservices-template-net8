@@ -19,8 +19,7 @@ public sealed class UserWriteDac : IUserWriteDac
     {
         _connFactory = connFactory;
         
-        // Pattern A: Injected, pre-registered pipeline for known key "System"
-        _pipeline = pipelineProvider.GetPipeline("System");
+        _pipeline = pipelineProvider.GetPipeline("PortalDb");
     }
 
     public async Task<Guid> CreateAsync(User user, CancellationToken ct = default)

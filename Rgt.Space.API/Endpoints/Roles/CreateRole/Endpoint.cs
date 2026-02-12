@@ -2,6 +2,7 @@ using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
 using Rgt.Space.Core.Abstractions.Identity;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.Identity;
 using Rgt.Space.Core.ReadModels;
 using CreateRoleCommand = Rgt.Space.Infrastructure.Commands.Identity.CreateRole.Command;
@@ -13,6 +14,7 @@ public sealed class Endpoint(IMediator mediator, ICurrentUser currentUser) : End
     public override void Configure()
     {
         Post("/api/v1/roles");
+        Permissions(PermissionConstants.UserManagement.AccessInsert);
         Summary(s =>
         {
             s.Summary = "Create a new role";

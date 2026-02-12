@@ -71,21 +71,6 @@ namespace Rgt.Space.Infrastructure
                     logger);
             });
 
-            // Register System pipeline (alias for MasterDb settings, used by Identity/System DACs)
-            services.AddResiliencePipeline("System", (builder, context) =>
-            {
-                // Usage: Static system-level queries (Users, Roles, etc)
-                // Config: Uses MasterDb settings (CRITICAL reliability)
-                var settings = context.ServiceProvider.GetRequiredService<IOptions<ResilienceSettings>>().Value.MasterDb;
-                var logger = context.ServiceProvider.GetRequiredService<ILogger<SystemConnectionFactory>>();
-
-                builder.AddPipelineFromSettings(
-                    settings,
-                    ResiliencePolicies.IsSqlTransientError,
-                    "System",
-                    logger);
-            });
-
             // Register AuditDb pipeline (single-database for Audit Logs)
             services.AddResiliencePipeline("AuditDb", (builder, context) =>
             {

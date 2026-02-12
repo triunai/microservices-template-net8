@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.ReadModels;
 using GetClientByIdQuery = Rgt.Space.Infrastructure.Queries.PortalRouting.GetClientById.Query;
 
@@ -11,6 +12,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest<Client
     public override void Configure()
     {
         Get("/api/v1/portal-routing/clients/{id}");
+        Permissions(PermissionConstants.PortalRouting.ClientView);
         Summary(s =>
         {
             s.Summary = "Get client by ID";

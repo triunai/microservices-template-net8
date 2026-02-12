@@ -1,5 +1,6 @@
 using FastEndpoints;
 using MediatR;
+using Microsoft.Extensions.Hosting;
 using Rgt.Space.Infrastructure.Queries.Debugging;
 
 namespace Rgt.Space.API.Endpoints.Debugging;
@@ -39,6 +40,13 @@ public class ComboBreakTestEndpoint : Endpoint<ComboBreakTestRequest, ComboBreak
 
     public override async Task HandleAsync(ComboBreakTestRequest req, CancellationToken ct)
     {
+        var env = HttpContext.RequestServices.GetRequiredService<IHostEnvironment>();
+        if (!env.IsDevelopment())
+        {
+            HttpContext.Response.StatusCode = 404;
+            return;
+        }
+
         // Use MediatR which goes through CheckpointPipelineBehavior
         var result = await _mediator.Send(new ComboBreakTest.Query(req.FailAt), ct);
         

@@ -20,12 +20,12 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
-    // Enable PII logging to debug OIDC issues
-    Microsoft.IdentityModel.Logging.IdentityModelEventSource.ShowPII = true;
-
     Log.Information("Starting up MicroservicesBase.API");
 
     var builder = WebApplication.CreateBuilder(args);
+
+    // Only show PII in OIDC logs during development (tokens, emails, claims)
+    Microsoft.IdentityModel.Logging.IdentityModelEventSource.ShowPII = builder.Environment.IsDevelopment();
 
     // Add Serilog to the logging pipeline
     builder.Host.UseSerilog();
@@ -72,14 +72,26 @@ try
     // Add HttpContextAccessor (required for audit logging)
     builder.Services.AddHttpContextAccessor();
 
-    // Add CORS
+    // Add CORS (environment-conditional)
     builder.Services.AddCors(options =>
     {
-        options.AddPolicy("AllowAll", policy =>
+        options.AddPolicy("Default", policy =>
         {
-            policy.AllowAnyOrigin()
-                  .AllowAnyHeader()
-                  .AllowAnyMethod();
+            if (builder.Environment.IsDevelopment())
+            {
+                policy.AllowAnyOrigin()
+                      .AllowAnyHeader()
+                      .AllowAnyMethod();
+            }
+            else
+            {
+                var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+                    ?? throw new InvalidOperationException("Cors:AllowedOrigins must be configured for non-development environments.");
+                policy.WithOrigins(allowedOrigins)
+                      .WithHeaders("Authorization", "Content-Type", "X-Tenant", "X-Correlation-Id")
+                      .WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                      .AllowCredentials();
+            }
         });
     });
 
@@ -103,7 +115,7 @@ try
             options.Audience = authConfig["Audience"];
 
             // Enable HTTPS metadata discovery (set to false ONLY for localhost dev)
-            options.RequireHttpsMetadata = false; // TODO: Set to true in production
+            options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
 
             // Token validation parameters
             options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
@@ -150,17 +162,17 @@ try
             {
                 OnTokenValidated = async context =>
                 {
-                    var claims = context.Principal?.Claims.Select(c => $"{c.Type}: {c.Value}").ToList();
                     var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-                    logger.LogInformation("SSO Token Validated. Claims: {Claims}", string.Join(", ", claims ?? new List<string>()));
 
-                    var subject = context.Principal?.FindFirst("sub")?.Value 
+                    var subject = context.Principal?.FindFirst("sub")?.Value
                                   ?? context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                    var email = context.Principal?.FindFirst("email")?.Value 
+                    var email = context.Principal?.FindFirst("email")?.Value
                                 ?? context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
-                    var name = context.Principal?.FindFirst("name")?.Value 
+                    var name = context.Principal?.FindFirst("name")?.Value
                                ?? context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? email;
                     var issuer = context.Principal?.FindFirst("iss")?.Value;
+
+                    logger.LogDebug("SSO Token Validated. Subject: {Subject}", subject);
 
                     if (string.IsNullOrEmpty(subject) || string.IsNullOrEmpty(email))
                     {
@@ -215,7 +227,8 @@ try
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
                     System.Text.Encoding.UTF8.GetBytes(
-                        localAuthConfig["SigningKey"] ?? "YourSuperSecretLocalSigningKey_ChangeThisInProduction_MustBe32CharactersLong!")),
+                        localAuthConfig["SigningKey"]
+                            ?? throw new InvalidOperationException("LocalAuth:SigningKey must be configured. Use dotnet user-secrets for development."))),
             };
 
             options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
@@ -223,11 +236,10 @@ try
                 OnTokenValidated = context =>
                 {
                     var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-                    var claims = context.Principal?.Claims.Select(c => $"{c.Type}: {c.Value}").ToList();
-                    logger.LogInformation("Local Token Validated. Claims: {Claims}", string.Join(", ", claims ?? new List<string>()));
-                    
+
                     // For local tokens, the "sub" claim IS the local user ID
                     var userId = context.Principal?.FindFirst("sub")?.Value;
+                    logger.LogDebug("Local Token Validated. Subject: {Subject}", userId);
                     if (!string.IsNullOrEmpty(userId))
                     {
                         var claimsIdentity = context.Principal?.Identity as System.Security.Claims.ClaimsIdentity;
@@ -317,14 +329,14 @@ try
             config.QueueLimit = 10; // Queue up to 10 requests when limit exceeded
         });
 
-        // Global rate limiter (fallback for requests without tenant)
+        // Global rate limiter (IP-based partitioning — runs before auth/tenant resolution)
         options.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<Microsoft.AspNetCore.Http.HttpContext, string>(httpContext =>
         {
-            var tenantId = httpContext.Items[HttpConstants.ContextKeys.TenantId]?.ToString() ?? "Unknown";
-            
-            // Per-tenant partition
+            var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+            // Per-IP partition
             return System.Threading.RateLimiting.RateLimitPartition.GetSlidingWindowLimiter(
-                partitionKey: tenantId,
+                partitionKey: clientIp,
                 factory: _ => new System.Threading.RateLimiting.SlidingWindowRateLimiterOptions
                 {
                     PermitLimit = 1000,
@@ -350,7 +362,7 @@ try
                 title = "Too Many Requests",
                 status = HttpConstants.StatusCodes.TooManyRequests,
                 detail = "Rate limit exceeded. Please retry after 10 seconds.",
-                tenantId = context.HttpContext.Items[HttpConstants.ContextKeys.TenantId]?.ToString() ?? "Unknown",
+                clientIp = context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown",
                 correlationId = context.HttpContext.Items[HttpConstants.ContextKeys.CorrelationId]?.ToString(),
                 timestamp = DateTimeOffset.UtcNow
             }, cancellationToken);
@@ -377,47 +389,46 @@ try
     var app = builder.Build();
 
     // Middleware pipeline (ORDER MATTERS!)
-    
-    // 0. Global exception handler (MUST be first to catch all exceptions)
-    // This invokes GlobalExceptionHandler registered via AddExceptionHandler
+
+    // 1. Global exception handler (MUST be first to catch all exceptions)
     app.UseExceptionHandler();
-    
-    // 1. Correlation ID middleware (generates correlation ID for the request)
+
+    // 2. Correlation ID middleware (generates/extracts X-Correlation-Id)
     app.UseMiddleware<CorrelationIdMiddleware>();
-    
-    // 1.5 Combo-Break Debugger headers (dev-only, adds X-Checkpoint-* headers to 5xx responses)
+
+    // 3. Combo-Break Debugger headers (dev-only, X-Checkpoint-* on 5xx)
     app.UseComboBreakHeaders();
-    
-    // 2. Tenant resolution middleware (extracts tenant and enriches logs)
-    app.UseMiddleware<TenantResolutionMiddleware>();
-    
-    // 3. Rate limiting (after tenant resolution, so it can partition by tenant)
+
+    // 4. Rate limiting (IP-based partitioning)
     app.UseRateLimiter();
-    
-    // 4. Rate limit info headers (add rate limit info to all responses)
+
+    // 5. Rate limit info headers
     app.UseMiddleware<RateLimitHeadersMiddleware>();
 
-    // 4.5 CORS (Must be before Auth)
-    app.UseCors("AllowAll");
-    
-    // 5. Serilog request logging (logs HTTP requests with correlation ID)
+    // 6. CORS (must be before Auth)
+    app.UseCors("Default");
+
+    // 7. Serilog request logging (enriched with correlation ID, tenant, client IP)
     app.UseSerilogRequestLogging(options =>
     {
         options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
         {
             const string unknown = "Unknown";
-            diagnosticContext.Set(HttpConstants.ContextKeys.CorrelationId, 
+            diagnosticContext.Set(HttpConstants.ContextKeys.CorrelationId,
                 httpContext.Items[HttpConstants.ContextKeys.CorrelationId]?.ToString() ?? unknown);
-            diagnosticContext.Set(HttpConstants.ContextKeys.TenantId, 
+            diagnosticContext.Set(HttpConstants.ContextKeys.TenantId,
                 httpContext.Items[HttpConstants.ContextKeys.TenantId]?.ToString() ?? unknown);
             diagnosticContext.Set("ClientIP", httpContext.Connection.RemoteIpAddress?.ToString() ?? unknown);
         };
     });
-    
-    // 6. Authentication & Authorization (validates JWT tokens and checks permissions)
+
+    // 8. Authentication (validates JWT tokens)
     app.UseAuthentication();
-    
-    // 6.1 Load Permissions from DB (Must be after AuthN and before AuthZ)
+
+    // 9. Tenant resolution (AFTER auth — JWT tid claim now works)
+    app.UseMiddleware<TenantResolutionMiddleware>();
+
+    // 10. Load Permissions from DB (after AuthN + tenant, before AuthZ)
     app.UseMiddleware<PermissionLoadingMiddleware>();
     
     app.UseAuthorization();

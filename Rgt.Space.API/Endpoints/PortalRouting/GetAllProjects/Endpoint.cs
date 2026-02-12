@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using Rgt.Space.Core.Domain.Contracts.PortalRouting;
 using GetAllProjectsQuery = Rgt.Space.Infrastructure.Queries.PortalRouting.GetAllProjects.Query;
 
@@ -11,6 +12,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest<IReadO
     public override void Configure()
     {
         Get("/api/v1/portal-routing/projects");
+        Permissions(PermissionConstants.PortalRouting.RoutingView);
         Summary(s =>
         {
             s.Summary = "Get all projects";

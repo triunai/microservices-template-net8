@@ -5,31 +5,14 @@
 
 ---
 
-## Tech Debt: Pipeline Key Normalization
+## ~~Tech Debt: Pipeline Key Normalization~~ — RESOLVED (2026-02-12)
 
-**Priority:** Medium (code smell, no runtime impact)
-**Scope:** All DAC constructors in `Infrastructure/Persistence/Dac/`
-
-### Problem
-DACs inconsistently use `"PortalDb"` vs `"System"` pipeline keys despite both hitting the same database (`rgt_space_portal`). The only difference is resilience settings:
-
-| Pipeline Key | Resilience Config Source | Current Users |
-|-------------|-------------------------|---------------|
-| `"PortalDb"` | `ResilienceSettings.TenantDb` | Portal Routing DACs, Role DACs, Feature Flag DACs |
-| `"System"` | `ResilienceSettings.MasterDb` | Some Identity DACs (comment says Identity, but code varies) |
-
-Both pipelines connect to the same `PortalDb` connection string via `ISystemConnectionFactory`.
-
-### What Needs to Happen
-1. Audit every DAC constructor to see which pipeline key it actually uses
-2. Normalize all to `"PortalDb"` (the canonical name for the single database)
-3. Remove `"System"` pipeline registration from `Extensions.cs` (or alias it to `"PortalDb"` settings)
-4. Update `Infrastructure/CLAUDE.md` to reflect the single pipeline
-
-### Why Not Now
-- Zero runtime impact (both pipelines work fine)
-- Changing pipeline keys could affect resilience behavior if settings differ
-- Need to verify `ResilienceSettings.MasterDb` vs `ResilienceSettings.TenantDb` values are identical or merge them
+**Status:** RESOLVED via TASK-014 Wave 5
+**What was done:**
+- All 5 DACs normalized from `"System"` → `"PortalDb"`
+- Removed `"System"` pipeline registration from `Extensions.cs`
+- Updated `Infrastructure/CLAUDE.md` to reflect single pipeline
+- 3 test mocks updated
 
 ---
 
@@ -121,10 +104,90 @@ Cache invalidation only clears the `IMemoryCache` on the node that handled the a
 
 ---
 
-## Tech Debt: Inherited from Root CLAUDE.md
+## ~~Tech Debt: Inherited from Root CLAUDE.md~~ — RESOLVED (2026-02-12)
 
-1. **Tenant header spoofing** — `X-Tenant` not validated against JWT claim
-2. **TenantResolutionMiddleware order** — JWT `tid` check before `UseAuthentication()` (dead code)
-3. **RequireHttpsMetadata = false** — SSO metadata discovery not enforcing HTTPS
-4. **CORS AllowAll** — needs production restriction
-5. **FluentAssertions v6 pin** — v8 requires commercial license
+**Status:** RESOLVED via TASK-014 Production Hardening (all 5 waves)
+1. ~~Tenant header spoofing~~ — JWT tid validation + mismatch → 403 (Wave 3)
+2. ~~TenantResolutionMiddleware order~~ — moved AFTER UseAuthentication (Wave 3)
+3. ~~RequireHttpsMetadata = false~~ — gated behind `IsDevelopment()` (Wave 1.2)
+4. ~~CORS AllowAll~~ — environment-conditional whitelist (Wave 1.1)
+5. **FluentAssertions v6 pin** — v8 requires commercial license (no action needed)
+
+---
+
+## ~~Tech Debt: Production Audit Findings (2026-02-12)~~ — RESOLVED (2026-02-12)
+
+**Status:** RESOLVED via TASK-014 Production Hardening
+
+### ~~CRITICAL~~ — ALL FIXED
+- ~~6. Hardcoded JWT signing key~~ — throws on missing, removed from appsettings.json (Wave 1.3)
+- ~~7. ShowPII = true unconditional~~ — gated behind `IsDevelopment()` (Wave 1.4)
+- ~~8. DB passwords in git-tracked appsettings.json~~ — placeholders + appsettings.Development.json (Wave 1.5)
+
+### ~~HIGH~~ — ALL FIXED
+- ~~9. 38 endpoints missing Permissions/AllowAnonymous~~ — full permission rollout (Wave 2)
+- ~~10. Debug endpoints in production~~ — env guard returns 404 in non-dev (Wave 4.1)
+- ~~11. JWT claims PII logging~~ — claims dump removed, subject at Debug (Wave 4.2)
+
+### ~~MEDIUM~~ — MOSTLY FIXED
+- ~~12. Serilog auth Debug in base config~~ — changed to Warning (Wave 1.6)
+- Pipeline key normalization: `"System"` → `"PortalDb"` in 5 DACs (Wave 5.1)
+- Duplicate route bug in GetProjectAssignments: fixed (Wave 5.4)
+- **Deferred:** Health check lockdown, AppException message review (low risk)
+
+---
+
+## SSO Integration Findings (2026-02-12)
+
+**Status:** DOCUMENTED + ALIGNMENT EXHAUSTED (6 rounds, 2026-02-12) — spec at `READMEs/Tasks/TASK-015-SSO-Auth-Alignment.md`
+
+### Fixes Required (Portal Side)
+| # | Fix | Severity | File |
+|---|-----|----------|------|
+| 1 | Case-insensitive tenant comparison (`.ToUpperInvariant()`) | CRITICAL | `TenantResolutionMiddleware.cs` |
+| 2 | Use `ext_provider` claim (not `issuer.Contains("localhost")`) | CRITICAL | `Program.cs` — classifies everyone as "azuread" in prod |
+| 3 | Remove hardcoded RSA key, use OIDC discovery | WARNING | `Program.cs` |
+| 4 | Remove broker DB connection strings (`RgtAuthPrototype`, `RgtAuthAudit`) | CLEANUP | `appsettings.json` |
+| 5 | Log `jti` claim for audit traceability | LOW | `Program.cs` |
+| 6 | Remove dead `"per-tenant"` rate limiter policy | CLEANUP | `Program.cs` |
+| 7 | Reject soft-deleted users in JIT sync (not reactivate) | CRITICAL | `IdentitySyncService.cs` — JIT sync currently reactivates deleted users |
+| 8 | Add `tid` to TestAuthHandler | LOW | `TestAuthHandler.cs` — tests don't exercise tenant resolution |
+| 9 | Remove provider from external ID lookup | MEDIUM | `UserReadDac.cs` + `IUserReadDac` + migration — prevents IdP flip-flop (B7) |
+
+### Decisions — ALL RESOLVED (2026-02-12)
+1. **Prod broker URL:** TBD — IP-based (no domain). Dev: `localhost:7012`
+2. **Separate domains:** Yes — no cookie sharing, CORS explicit on both sides
+3. **RBAC:** Global roles for v1 (portal's decision, broker has no role claims)
+4. **Server-to-server:** Not v1 — one-way integration only
+5. **JWKS persistence:** Not v1 — coordinate maintenance windows
+6. **Soft-deleted re-login:** Reject at portal middleware (defense in depth)
+7. **Token contract:** In progress (TOKEN-CONTRACT.md being created on broker side)
+8. ~~HandleCallback is_active~~ — **FIXED (2026-02-12)**
+
+### Broker-Side Fixes (Their Responsibility, Affects Us)
+- ~~`is_active` not checked in HandleCallback~~ — **FIXED (2026-02-12)**, returns USER_002 / 403
+- `is_active` not checked during refresh — **in progress (2026-02-12)**, broker fixing DB proc + C# service layer. New error: `USER_INACTIVE` / 403
+- Single-key JWKS with no rotation grace period (pending)
+- CORS hardcoded to localhost — needs our prod origins (pending)
+- No rate limiting on broker endpoints (pending)
+- `expiresIn` hardcoded to 900 in refresh response DTO (pending)
+- No API versioning — TOKEN-CONTRACT.md in progress, all 13 claims confirmed stable
+
+### Integration Contract Highlights
+- `sub` = broker's user UUID (stable across IdP migrations, shared across tenants)
+- `tid` always present, always uppercase in DB, both sides `.ToUpperInvariant()`
+- `ext_provider` is free-form string (`Google`, `AzureAD`, `MockIdP`, future values)
+- Access token 15 min, refresh token 14 days, one-time rotation with family reuse detection
+- Logout revokes specific refresh token only — access token valid until `exp`
+- Concurrent multi-tenant sessions fully supported
+
+---
+
+## Remaining Tech Debt
+
+1. **FluentAssertions v6 pin** — v8 requires commercial license (no action needed)
+2. **Health check `/health` endpoint** — exposes infra details without auth (low risk for internal APIs)
+3. **AppException messages** — may contain table names/SQL in client errors (needs audit)
+4. **TrackedEntity base class** — for entities without soft-delete in SQL (no runtime impact)
+5. **UpdateUser audit trail** — `updatedBy` uses `req.UserId` not `ICurrentUser.Id` (now that auth is enforced, should use JWT identity)
+6. **Debug endpoints AllowAnonymous()** — runtime `IsDevelopment()` guard is correct, but endpoints visible in Swagger across all environments

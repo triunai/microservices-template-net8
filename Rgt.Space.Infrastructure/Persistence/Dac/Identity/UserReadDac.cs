@@ -25,8 +25,7 @@ public sealed class UserReadDac : IUserReadDac
         ILogger<UserReadDac> logger)
     {
         _connFactory = connFactory;
-        // Standard Pattern A: Inject and use the pre-registered "System" pipeline
-        _pipeline = pipelineProvider.GetPipeline("System");
+        _pipeline = pipelineProvider.GetPipeline("PortalDb");
         _logger = logger;
     }
 

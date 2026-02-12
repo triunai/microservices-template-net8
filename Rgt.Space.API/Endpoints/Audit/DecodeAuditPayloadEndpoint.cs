@@ -1,4 +1,5 @@
-﻿using FastEndpoints;
+using FastEndpoints;
+using Microsoft.Extensions.Hosting;
 using Rgt.Space.Core.Domain.Contracts.Audit;
 using Rgt.Space.Infrastructure.Persistence.Services.Audit;
 
@@ -25,6 +26,13 @@ public sealed class DecodeAuditPayloadEndpoint(IAuditPayloadDecoderService decod
 
     public override async Task HandleAsync(DecodeAuditPayloadRequest req, CancellationToken ct)
     {
+        var env = HttpContext.RequestServices.GetRequiredService<IHostEnvironment>();
+        if (!env.IsDevelopment())
+        {
+            HttpContext.Response.StatusCode = 404;
+            return;
+        }
+
         var result = await decoderService.DecodePayloadAsync(req.HexString, req.Mode, ct);
 
         if (!result.Success)

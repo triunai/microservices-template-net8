@@ -6,12 +6,15 @@
 `test/rbac-positiontype-verification-8034414594985432536`
 
 ## Project Health
-- **Build**: 0 errors, 0 warnings (verified 2026-02-11)
+- **Build**: 0 errors, 0 warnings (verified 2026-02-12)
 - **Tests**: 97 unit + 49 integration = 146 total, 0 failures
 - **Last commit**: `1c76808` — feat: combo breaker
 - **Docker**: Redis via docker-compose, PostgreSQL external (Testcontainers for tests)
 - **CI/CD**: GitHub Actions (dependabot configured)
 - **Auth**: `CurrentUser` (JWT-based) ACTIVE in production, `DevCurrentUser` only in tests
+- **TASK-014**: COMPLETE — verified via 8-point code review (all pass, 3 non-blocking warnings)
+- **TASK-015**: READY — SSO auth alignment EXHAUSTED (6 rounds), 9 fixes (~50 min), 3 CRITICALs
+- **Uncommitted**: 55 modified + 4 new files from TASK-014 + TASK-015 spec
 - **Migration load order**: 00 → 01 → 03 → 01a → 02 → 06 → 08 → 09 → 10 → 11 → 12 → 13
 
 ## What's Set Up
@@ -251,39 +254,85 @@ Restored real JWT auth on all feature flag endpoints:
 
 ---
 
-## NEXT UP (Post-Demo / SIT Prep)
+## COMPLETED: TASK-014 — Production Hardening (2026-02-12)
 
-> Demo-ready as-is: superadmin has all permissions via migration 13.
-> RBAC enforcement only matters when restricted roles exist (SIT).
+> **Spec:** `READMEs/Tasks/TASK-014-Production-Hardening.md`
+> **Audit:** 5 CRITICAL, 4 HIGH, 5 MEDIUM — all fixed across 5 waves
 
-### SIT Prep: Permission Rollout (~30 min)
-- Add `Permissions()` to 16 non-feature endpoints (Identity, PortalRouting, Roles, Dashboard, TaskAllocation)
-- Not needed for superadmin demo — only blocks restricted roles
-- Do this before deploying to SIT with multiple user roles
+### Wave 1: Quick CRITICALs — DONE
+- CORS: `AllowAll` → environment-conditional (`Default` policy, whitelist in prod)
+- RequireHttpsMetadata: gated behind `IsDevelopment()`
+- JWT signing key: throw if missing, removed from appsettings.json
+- ShowPII: gated behind `IsDevelopment()`, moved after builder creation
+- DB passwords: placeholders in appsettings.json, real values in appsettings.Development.json (git-ignored)
+- Serilog auth levels: `Debug` → `Warning` in base, `Debug` in appsettings.Development.json
+- Removed hardcoded `"Environment": "Development"` from Serilog properties
 
-### Code Quality (no runtime impact)
-1. **TrackedEntity base class** (~20 min) — new base for tables without soft-delete (Action, Permission, Role). Currently these entities inherit AuditableEntity which gives them phantom `IsDeleted`/`DeletedAt`/`DeletedBy` properties. Dapper ignores them (no runtime impact), but it's misleading code.
-2. **RBAC integration test** (~15 min) — one test using real middleware + DB (not TestAuthHandler) so migration 13 removal would cause a test failure. Safety net only.
+### Wave 2: Permission Rollout — DONE
+- Created `PermissionConstants.cs` (3 modules: PortalRouting, TaskAllocation, UserManagement)
+- 37 endpoints: added `Permissions()` calls via 2-agent swarm
+- UpdateUser: removed `AllowAnonymous()`, added `Permissions(AccountEdit)`
+- Sales/GetById: removed `AllowAnonymous()`, added `Permissions(ClientView)`
+- TestAuthHandler: updated with all 20 permission claims (6 FeatureFlag + 8 PortalRouting + 4 TaskAllocation + 8 UserMgmt)
 
-### Tooling Setup
+### Wave 3: Tenant Fix — DONE
+- Middleware reorder: TenantResolution now runs AFTER UseAuthentication (step 9, was step 2)
+- JWT tid validation: mismatched X-Tenant header vs JWT tid → 403 Forbidden
+- Removed query parameter `?tenantId=` fallback
+- Rate limiter: switched from tenant-based to IP-based partitioning
+
+### Wave 4: Debug & Logging Cleanup — DONE
+- ComboBreakTestEndpoint: returns 404 in non-development environments
+- DecodeAuditPayloadEndpoint: returns 404 in non-development environments
+- SSO OnTokenValidated: removed full claims dump, log subject at Debug
+- Local OnTokenValidated: removed full claims dump, log subject at Debug
+
+### Wave 5: MEDIUMs — DONE (partial)
+- Pipeline key normalization: 5 DACs `"System"` → `"PortalDb"`, removed `"System"` pipeline registration
+- 3 test pipeline mocks updated: `"System"` → `"PortalDb"`
+- GetProjectAssignments duplicate route: fixed (caught by Wave 2 agent)
+- **Deferred:** Health check lockdown (low risk, K8s probes need anonymous), AppException message review
+
+---
+
+### Backlog
+
+#### Code Quality (no runtime impact)
+1. **TrackedEntity base class** (~20 min) — new base for tables without soft-delete (Action, Permission, Role)
+2. **RBAC integration test** (~15 min) — real middleware + DB test (safety net only)
+3. **Health check lockdown** — auth for `/health` detailed endpoint, remove `/health/tenant/{tenantName}`
+4. **AppException message review** — ensure no table names/SQL fragments in client-facing errors
+5. **Dead `"per-tenant"` rate limiter policy** — Program.cs registers named policy never used by any endpoint
+6. **UpdateUser audit trail** — `updatedBy` uses `req.UserId` instead of `ICurrentUser.Id` (now that auth is enforced)
+7. **Debug endpoints AllowAnonymous()** — runtime guard is correct but they appear in Swagger across all environments
+
+#### Tooling Setup
 1. **Hooks** — auto-format on edit, block sensitive files (.env, secrets), auto-build on save
 2. **MCP servers** — context7 for live docs, GitHub MCP for PR/issue integration
-3. **Custom skills** — `/gen-test` (generate test from endpoint), `/create-migration` (scaffold migration file)
-4. **Subagent definitions** — `.claude/agents/security-reviewer.md`
+3. **Custom skills** — `/gen-test`, `/create-migration`
 
-### Feature Work
+#### SSO Integration (Pre-Production)
+1. **TASK-015: SSO Auth Alignment** (~50 min) — 9 fixes, all decisions resolved, alignment EXHAUSTED (6 rounds with broker team)
+   - Fix 1: Case-insensitive tenant (CRITICAL)
+   - Fix 2: Use `ext_provider` claim (CRITICAL for prod — current hack classifies everyone as "azuread")
+   - Fix 3: Remove hardcoded RSA key
+   - Fix 4: Remove broker DB conn strings
+   - Fix 5: Log `jti` for audit
+   - Fix 6: Remove dead rate limiter policy
+   - Fix 7: Reject soft-deleted users in JIT sync (CRITICAL — currently reactivates deleted users)
+   - Fix 8: Add `tid` to TestAuthHandler
+   - Fix 9: Remove provider from external ID lookup (MEDIUM — prevents IdP flip-flop, needs migration)
+
+#### Feature Work
 1. **GET /api/v1/users/{userId}/clients** endpoint (if frontend needs scoped client list)
 
 ---
 
 ## Active Tech Debt
 > See `READMEs/State/state.md` for permanent tech debt tracking.
-1. Pipeline key normalization (`"PortalDb"` vs `"System"`)
-2. Tenant header spoofing (X-Tenant not validated against JWT)
-3. TenantResolutionMiddleware ordering (tid check before auth)
-4. RequireHttpsMetadata = false (SSO)
-5. CORS AllowAll (production risk)
-6. FluentAssertions v6 pin (v8 commercial)
+1. FluentAssertions v6 pin (v8 commercial) — no action needed
+2. Health check `/health` endpoint exposes infra details without auth
+3. AppException messages may contain internal details (needs audit)
 
 ## Domains & Endpoint Coverage
 | Domain | Endpoints | Status |

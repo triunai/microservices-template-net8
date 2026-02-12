@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using DeleteClientCommand = Rgt.Space.Infrastructure.Commands.PortalRouting.DeleteClient.Command;
 
 namespace Rgt.Space.API.Endpoints.PortalRouting.DeleteClient;
@@ -10,6 +11,7 @@ public sealed class Endpoint(IMediator mediator) : EndpointWithoutRequest
     public override void Configure()
     {
         Delete("/api/v1/portal-routing/clients/{id}");
+        Permissions(PermissionConstants.PortalRouting.ClientDelete);
         Summary(s =>
         {
             s.Summary = "Delete a client";

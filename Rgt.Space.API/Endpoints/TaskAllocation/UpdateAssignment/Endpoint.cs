@@ -1,6 +1,7 @@
 using FastEndpoints;
 using MediatR;
 using Rgt.Space.API.ProblemDetails;
+using Rgt.Space.Core.Constants;
 using TaskAllocationCommands = Rgt.Space.Infrastructure.Commands.TaskAllocation;
 
 namespace Rgt.Space.API.Endpoints.TaskAllocation.UpdateAssignment;
@@ -18,7 +19,7 @@ public sealed class Endpoint(IMediator mediator, Rgt.Space.Core.Abstractions.Ide
     public override void Configure()
     {
         Put("/api/v1/projects/{projectId:guid}/assignments");
-        // AllowAnonymous(); // TODO: Remove in Phase 2
+        Permissions(PermissionConstants.TaskAllocation.Edit);
 
         Summary(s =>
         {
